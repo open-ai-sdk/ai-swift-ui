@@ -34,104 +34,89 @@ public struct UIMessageChunkDecoder: Sendable {
     // MARK: - Private parsing
 
     private func parseChunk(type: String, raw: [String: Any], data: Data) throws -> UIMessageChunk {
+        if let lifecycle = parseLifecycleChunk(type: type, raw: raw) {
+            return lifecycle
+        }
+        if let text = parseTextChunk(type: type, raw: raw) {
+            return text
+        }
+        if let tool = try parseToolChunk(type: type, raw: raw) {
+            return tool
+        }
+        if let source = parseSourceChunk(type: type, raw: raw) {
+            return source
+        }
+        if type.hasPrefix("data-") {
+            return try parseDataChunk(type: type, raw: raw)
+        }
+        throw ChunkDecodingError.unknownChunkType(type)
+    }
+
+    private func parseLifecycleChunk(type: String, raw: [String: Any]) -> UIMessageChunk? {
         switch type {
-        case "start":
-            let msgId = raw["messageId"] as? String ?? ""
-            return .start(messageId: msgId)
+        case "start": return .start(messageId: raw["messageId"] as? String ?? "")
+        case "start-step": return .startStep
+        case "finish-step": return .finishStep
+        case "finish": return .finish
+        case "error": return .error(text: raw["errorText"] as? String ?? "unknown error")
+        default: return nil
+        }
+    }
 
-        case "start-step":
-            return .startStep
+    private func parseTextChunk(type: String, raw: [String: Any]) -> UIMessageChunk? {
+        let id = raw["id"] as? String ?? ""
+        switch type {
+        case "text-start": return .textStart(id: id)
+        case "text-delta": return .textDelta(id: id, delta: raw["delta"] as? String ?? "")
+        case "text-end": return .textEnd(id: id)
+        case "reasoning-start": return .reasoningStart(id: id)
+        case "reasoning-delta": return .reasoningDelta(id: id, delta: raw["delta"] as? String ?? "")
+        case "reasoning-end": return .reasoningEnd(id: id, signature: raw["signature"] as? String)
+        default: return nil
+        }
+    }
 
-        case "finish-step":
-            return .finishStep
-
-        case "finish":
-            return .finish
-
-        case "error":
-            let text = raw["errorText"] as? String ?? "unknown error"
-            return .error(text: text)
-
-        case "text-start":
-            let id = raw["id"] as? String ?? ""
-            return .textStart(id: id)
-
-        case "text-delta":
-            let id = raw["id"] as? String ?? ""
-            let delta = raw["delta"] as? String ?? ""
-            return .textDelta(id: id, delta: delta)
-
-        case "text-end":
-            let id = raw["id"] as? String ?? ""
-            return .textEnd(id: id)
-
-        case "reasoning-start":
-            let id = raw["id"] as? String ?? ""
-            return .reasoningStart(id: id)
-
-        case "reasoning-delta":
-            let id = raw["id"] as? String ?? ""
-            let delta = raw["delta"] as? String ?? ""
-            return .reasoningDelta(id: id, delta: delta)
-
-        case "reasoning-end":
-            let id = raw["id"] as? String ?? ""
-            let sig = raw["signature"] as? String
-            return .reasoningEnd(id: id, signature: sig)
-
+    private func parseToolChunk(type: String, raw: [String: Any]) throws -> UIMessageChunk? {
+        let tcId = raw["toolCallId"] as? String ?? ""
+        switch type {
         case "tool-input-start":
-            let tcId = raw["toolCallId"] as? String ?? ""
-            let name = raw["toolName"] as? String ?? ""
-            return .toolInputStart(toolCallId: tcId, toolName: name)
-
+            return .toolInputStart(toolCallId: tcId, toolName: raw["toolName"] as? String ?? "")
         case "tool-input-delta":
-            let tcId = raw["toolCallId"] as? String ?? ""
-            let delta = raw["inputTextDelta"] as? String ?? ""
-            return .toolInputDelta(toolCallId: tcId, inputTextDelta: delta)
-
+            return .toolInputDelta(toolCallId: tcId, inputTextDelta: raw["inputTextDelta"] as? String ?? "")
         case "tool-input-available":
-            let tcId = raw["toolCallId"] as? String ?? ""
-            let name = raw["toolName"] as? String ?? ""
             let input = try decodeJSONValueField("input", from: raw)
-            return .toolInputAvailable(toolCallId: tcId, toolName: name, input: input)
-
+            return .toolInputAvailable(toolCallId: tcId, toolName: raw["toolName"] as? String ?? "", input: input)
         case "tool-output-available":
-            let tcId = raw["toolCallId"] as? String ?? ""
             let output = try decodeJSONValueField("output", from: raw)
             return .toolOutputAvailable(toolCallId: tcId, output: output)
+        default:
+            return nil
+        }
+    }
 
+    private func parseSourceChunk(type: String, raw: [String: Any]) -> UIMessageChunk? {
+        switch type {
         case "source":
-            let id = raw["id"] as? String
-            let url = raw["url"] as? String ?? ""
-            let title = raw["title"] as? String
-            return .source(id: id, url: url, title: title)
-
+            return .source(id: raw["id"] as? String, url: raw["url"] as? String ?? "", title: raw["title"] as? String)
         case "sources":
             let sourcesRaw = raw["sources"] as? [[String: Any]] ?? []
             let sources = sourcesRaw.map { s in
-                SourceURLPart(
-                    id: s["id"] as? String,
-                    url: s["url"] as? String ?? "",
-                    title: s["title"] as? String
-                )
+                SourceURLPart(id: s["id"] as? String, url: s["url"] as? String ?? "", title: s["title"] as? String)
             }
             return .sources(sources)
-
         default:
-            // Handle data-* chunks
-            if type.hasPrefix("data-") {
-                let name = String(type.dropFirst(5))
-                let payload: JSONValue
-                if let dataField = raw["data"] {
-                    let fieldData = try JSONSerialization.data(withJSONObject: dataField)
-                    payload = try JSONDecoder().decode(JSONValue.self, from: fieldData)
-                } else {
-                    payload = .null
-                }
-                return .data(name: name, payload: payload)
-            }
-            throw ChunkDecodingError.unknownChunkType(type)
+            return nil
         }
+    }
+
+    private func parseDataChunk(type: String, raw: [String: Any]) throws -> UIMessageChunk {
+        let name = String(type.dropFirst(5))
+        guard let dataField = raw["data"] else {
+            return .data(name: name, payload: .null)
+        }
+        let fieldData = try JSONSerialization.data(withJSONObject: dataField)
+        let payload = try JSONDecoder().decode(JSONValue.self, from: fieldData)
+        return .data(name: name, payload: payload)
     }
 
     private func decodeJSONValueField(_ key: String, from raw: [String: Any]) throws -> JSONValue {

@@ -127,7 +127,9 @@ struct HTTPTransportRequestBuildingTests {
             Issue.record("Expected JSON body")
             return
         }
-        #expect(parsed["modelId"] as? String == "gpt-4o")
+        // Contract §1: model hints are nested under "body", not at the root
+        let bodyObj = parsed["body"] as? [String: Any]
+        #expect(bodyObj?["modelId"] as? String == "gpt-4o")
         let metadata = parsed["metadata"] as? [String: Any]
         #expect(metadata?["threadId"] as? String == "thread-123")
     }

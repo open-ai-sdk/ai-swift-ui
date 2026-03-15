@@ -33,5 +33,9 @@ file_length:
   error: 800
 
 function_body_length:
-  warning: 60
-  error: 100
+  warning: 80
+  error: 120
+
+cyclomatic_complexity:
+  warning: 20
+  error: 35

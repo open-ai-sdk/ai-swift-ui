@@ -121,7 +121,7 @@ struct ChatSessionTests {
         #expect(session2.messages.count == 2)
         #expect(session2.messages[0].role == .user)
         // New answer should differ (or same structure)
-        let _ = firstAnswer  // silence unused warning
+        _ = firstAnswer  // silence unused warning
         #expect(session2.messages[1].role == .assistant)
         #expect(session2.status == .ready)
     }

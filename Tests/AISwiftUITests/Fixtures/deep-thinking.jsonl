@@ -1,0 +1,47 @@
+data: {"type":"start","messageId":"msg-deep-1"}
+
+data: {"type":"data-plan","data":{"content":"Researching AI trends in 2025"}}
+
+data: {"type":"data-steps","data":{"steps":["Research information","Analyze data","Summarize results"]}}
+
+data: {"type":"start-step"}
+
+data: {"type":"reasoning-start","id":"text_1"}
+
+data: {"type":"reasoning-delta","id":"text_1","delta":"I need to find recent AI trends..."}
+
+data: {"type":"reasoning-delta","id":"text_1","delta":" Let me search the web."}
+
+data: {"type":"tool-input-start","toolCallId":"ws-1","toolName":"web_search"}
+
+data: {"type":"tool-input-delta","toolCallId":"ws-1","inputTextDelta":"{\"query\":\"AI trends 2025\"}"}
+
+data: {"type":"tool-input-available","toolCallId":"ws-1","toolName":"web_search","input":{"query":"AI trends 2025"}}
+
+data: {"type":"tool-output-available","toolCallId":"ws-1","output":{"results":["GPT-5 released","Gemini 2.0 released"]}}
+
+data: {"type":"reasoning-end","id":"text_1"}
+
+data: {"type":"finish-step"}
+
+data: {"type":"start-step"}
+
+data: {"type":"text-start","id":"text_2"}
+
+data: {"type":"text-delta","id":"text_2","delta":"AI in 2025 saw major releases "}
+
+data: {"type":"text-delta","id":"text_2","delta":"from Google and OpenAI."}
+
+data: {"type":"text-end","id":"text_2"}
+
+data: {"type":"finish-step"}
+
+data: {"type":"sources","sources":[{"url":"https://openai.com/gpt5","title":"GPT-5 Released"},{"url":"https://deepmind.com/gemini","title":"Gemini 2.0"}]}
+
+data: {"type":"data-artifacts","data":{"attachments":[{"name":"report.md","url":"https://storage.example.com/report.md"}]}}
+
+data: {"type":"data-suggested-questions","data":{"questions":["What are the top AI models in 2025?","How does GPT-5 compare to Gemini 2.0?"]}}
+
+data: {"type":"finish"}
+
+data: [DONE]

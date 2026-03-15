@@ -1,0 +1,9 @@
+data: {"type":"start","messageId":"msg-error-001"}
+
+data: {"type":"start-step"}
+
+data: {"type":"text-start","id":"text_1"}
+
+data: {"type":"text-delta","id":"text_1","delta":"partial response"}
+
+data: {"type":"error","errorText":"stream error: connection reset"}

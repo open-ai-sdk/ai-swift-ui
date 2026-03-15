@@ -1,0 +1,23 @@
+data: {"type":"start","messageId":"msg-reasoning-001"}
+
+data: {"type":"start-step"}
+
+data: {"type":"reasoning-start","id":"text_1"}
+
+data: {"type":"reasoning-delta","id":"text_1","delta":"I need to think about this..."}
+
+data: {"type":"reasoning-delta","id":"text_1","delta":" Let me consider the options."}
+
+data: {"type":"reasoning-end","id":"text_1"}
+
+data: {"type":"text-start","id":"text_1"}
+
+data: {"type":"text-delta","id":"text_1","delta":"Here is my answer."}
+
+data: {"type":"text-end","id":"text_1"}
+
+data: {"type":"finish-step"}
+
+data: {"type":"finish"}
+
+data: [DONE]

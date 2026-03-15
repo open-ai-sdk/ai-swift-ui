@@ -1,0 +1,27 @@
+data: {"type":"start","messageId":"msg-tool-001"}
+
+data: {"type":"start-step"}
+
+data: {"type":"tool-input-start","toolCallId":"tc1","toolName":"search"}
+
+data: {"type":"tool-input-delta","toolCallId":"tc1","inputTextDelta":"{\"q\":\"go\"}"}
+
+data: {"type":"tool-input-available","toolCallId":"tc1","toolName":"search","input":{"q":"go"}}
+
+data: {"type":"tool-output-available","toolCallId":"tc1","output":{"results":[]}}
+
+data: {"type":"finish-step"}
+
+data: {"type":"start-step"}
+
+data: {"type":"text-start","id":"text_2"}
+
+data: {"type":"text-delta","id":"text_2","delta":"Found nothing."}
+
+data: {"type":"text-end","id":"text_2"}
+
+data: {"type":"finish-step"}
+
+data: {"type":"finish"}
+
+data: [DONE]

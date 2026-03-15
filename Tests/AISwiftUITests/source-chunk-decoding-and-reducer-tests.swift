@@ -51,7 +51,10 @@ struct SourceChunkDecodingAndReducerTests {
     // MARK: - Batch sources chunk
 
     @Test func decodesBatchSourcesChunk() throws {
-        let json = #"data: {"type":"sources","sources":[{"id":"s1","url":"https://a.com","title":"A"},{"id":"s2","url":"https://b.com","title":"B"}]}"#
+        let payload = #"{"type":"sources","sources":"#
+            + #"[{"id":"s1","url":"https://a.com","title":"A"},"#
+            + #"{"id":"s2","url":"https://b.com","title":"B"}]}"#
+        let json = "data: " + payload
         let chunk = try decoder.decode(json)
         guard case .sources(let list) = chunk else {
             Issue.record("Expected .sources chunk"); return

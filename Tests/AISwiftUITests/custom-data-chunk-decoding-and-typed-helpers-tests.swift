@@ -81,7 +81,10 @@ struct CustomDataChunkDecodingAndTypedHelpersTests {
     // MARK: - data-document-references
 
     @Test func decodesDataDocumentReferencesChunk() throws {
-        let json = #"data: {"type":"data-document-references","data":[{"id":"doc-1","title":"Go Book"},{"id":"doc-2","title":"Concurrency Guide"}]}"#
+        let payload = #"{"type":"data-document-references","data":"#
+            + #"[{"id":"doc-1","title":"Go Book"},"#
+            + #"{"id":"doc-2","title":"Concurrency Guide"}]}"#
+        let json = "data: " + payload
         let chunk = try decoder.decode(json)
         guard case .data(let name, let payload) = chunk else {
             Issue.record("Expected .data chunk"); return

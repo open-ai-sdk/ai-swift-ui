@@ -94,17 +94,18 @@ public final class HTTPChatTransport: ChatTransport, @unchecked Sendable {
     }
 
     private func encodeDefaultBody(for request: TransportSendRequest) throws -> Data {
-        var body: [String: Any] = [
+        var envelope: [String: Any] = [
             "id": request.id,
             "messages": request.messages.map { encodeMessage($0) },
         ]
+        // Contract §1: model/route hints go under the "body" key, not at the root.
         if let bodyExtra = request.options?.body, !bodyExtra.isEmpty {
-            for (k, v) in bodyExtra { body[k] = v }
+            envelope["body"] = bodyExtra
         }
         if let metadata = request.options?.metadata, !metadata.isEmpty {
-            body["metadata"] = metadata
+            envelope["metadata"] = metadata
         }
-        return try JSONSerialization.data(withJSONObject: body)
+        return try JSONSerialization.data(withJSONObject: envelope)
     }
 
     private func encodeMessage(_ message: UIMessage) -> [String: Any] {

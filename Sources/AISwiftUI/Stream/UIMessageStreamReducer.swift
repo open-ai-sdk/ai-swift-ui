@@ -49,7 +49,7 @@ public struct UIMessageStreamReducer: Sendable {
         case .sources(let list):
             for src in list { message.parts.append(.sourceURL(src)) }
         case .data(let name, let payload):
-            message.parts.append(.data(DataPart(name: name, data: payload)))
+            applyDataChunk(name: name, payload: payload)
         }
     }
 
@@ -122,6 +122,21 @@ public struct UIMessageStreamReducer: Sendable {
             p.output = output
             message.parts[idx] = .toolInvocation(p)
         default: break
+        }
+    }
+
+    /// Handles `data-*` chunks. `data-document-references` is promoted to
+    /// `.sourceDocument` parts; all others land as generic `DataPart`.
+    private mutating func applyDataChunk(name: String, payload: JSONValue) {
+        if name == "document-references", case .array(let items) = payload {
+            for item in items {
+                guard case .object(let obj) = item else { continue }
+                let id = obj["id"]?.stringValue
+                let title = obj["title"]?.stringValue
+                message.parts.append(.sourceDocument(SourceDocumentPart(id: id, title: title)))
+            }
+        } else {
+            message.parts.append(.data(DataPart(name: name, data: payload)))
         }
     }
 

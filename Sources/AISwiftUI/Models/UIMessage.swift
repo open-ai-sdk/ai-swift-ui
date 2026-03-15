@@ -56,6 +56,24 @@ public extension UIMessage {
             return nil
         }
     }
+
+    /// Document references decoded from `data-document-references` chunks.
+    var documentReferences: [SourceDocumentPart] {
+        parts.compactMap {
+            if case .sourceDocument(let p) = $0 { return p }
+            return nil
+        }
+    }
+
+    /// Usage token counts if a `data-usage` chunk was received.
+    var usageTokens: UsageTokens? {
+        dataParts.compactMap(\.usageTokens).first
+    }
+
+    /// Suggested follow-up questions if a `data-suggested-questions` chunk was received.
+    var suggestedQuestions: [String]? {
+        dataParts.compactMap(\.suggestedQuestions).first
+    }
 }
 
 // MARK: - Codable

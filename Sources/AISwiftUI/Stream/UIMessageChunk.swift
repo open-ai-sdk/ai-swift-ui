@@ -3,13 +3,13 @@
 public enum UIMessageChunk: Sendable {
     // MARK: - Lifecycle
     /// Stream opened; carries the message ID assigned by the server.
-    case start(messageId: String)
+    case start(messageId: String, metadata: [String: JSONValue]? = nil)
     /// A new model step has started (may contain multiple tool calls or text).
     case startStep
     /// Current step finished.
     case finishStep
     /// Stream finished successfully; `finishReason` from the server (e.g. "stop", "length").
-    case finish(finishReason: String? = nil)
+    case finish(finishReason: String? = nil, metadata: [String: JSONValue]? = nil)
     /// Stream terminated with an error.
     case error(text: String)
 
@@ -58,7 +58,7 @@ public enum UIMessageChunk: Sendable {
     case abort(reason: String?)
 
     /// A structured source URL reference from a `source-url` chunk.
-    case sourceURL(sourceId: String, url: String, title: String)
+    case sourceURL(sourceId: String, url: String, title: String?)
 
     /// A structured source document reference from a `source-document` chunk.
     case sourceDocument(sourceId: String, mediaType: String, title: String, filename: String)

@@ -6,3 +6,11 @@
 public protocol ChatTransport: Sendable {
     func send(_ request: TransportSendRequest) -> AsyncThrowingStream<UIMessageChunk, any Error>
 }
+
+public extension ChatTransport {
+    /// Attempt to reconnect to an in-progress stream.
+    /// Returns `nil` by default — transports that support reconnection override this.
+    func reconnectToStream(_ request: TransportSendRequest) -> AsyncThrowingStream<UIMessageChunk, any Error>? {
+        nil
+    }
+}

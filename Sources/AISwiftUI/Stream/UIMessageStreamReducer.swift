@@ -36,13 +36,15 @@ public struct UIMessageStreamReducer: Sendable {
     /// Apply a single chunk, mutating the reducer's `message` state.
     public mutating func apply(_ chunk: UIMessageChunk) {
         switch chunk {
-        case .start(let msgId):
+        case .start(let msgId, let metadata):
             resetState(messageId: msgId)
+            mergeMetadata(metadata)
         case .startStep, .finishStep, .textEnd, .toolInputDelta:
             break
-        case .finish(let reason):
+        case .finish(let reason, let metadata):
             isFinished = true
             finishReason = reason
+            mergeMetadata(metadata)
         case .error(let text):
             error = text
         case .textStart, .textDelta:
@@ -58,7 +60,7 @@ public struct UIMessageStreamReducer: Sendable {
         case .data(let name, let payload, let isTransient, let dataId):
             applyDataChunk(name: name, payload: payload, isTransient: isTransient, dataId: dataId)
         case .messageMetadata(let metadata):
-            message.metadata = metadata
+            mergeMetadata(metadata)
         case .abort(let reason):
             isAborted = true
             error = reason ?? "aborted"
@@ -148,6 +150,9 @@ public struct UIMessageStreamReducer: Sendable {
     /// Handles `data-*` chunks. `data-document-references` is promoted to
     /// `.sourceDocument` parts; all others land as generic `DataPart`.
     private mutating func applyDataChunk(name: String, payload: JSONValue, isTransient: Bool = false, dataId: String? = nil) {
+        if isTransient {
+            return
+        }
         if name == "document-references", case .array(let items) = payload {
             for item in items {
                 guard case .object(let obj) = item else { continue }
@@ -156,7 +161,27 @@ public struct UIMessageStreamReducer: Sendable {
                 message.parts.append(.sourceDocument(SourceDocumentPart(id: id, title: title)))
             }
         } else {
-            message.parts.append(.data(DataPart(name: name, data: payload, isTransient: isTransient, id: dataId)))
+            let next = DataPart(name: name, data: payload, isTransient: isTransient, id: dataId)
+            if let dataId,
+               let idx = message.parts.firstIndex(where: {
+                   guard case .data(let existing) = $0 else { return false }
+                   return existing.name == name && existing.id == dataId
+               }) {
+                message.parts[idx] = .data(next)
+            } else {
+                message.parts.append(.data(next))
+            }
+        }
+    }
+
+    private mutating func mergeMetadata(_ metadata: [String: JSONValue]?) {
+        guard let metadata else { return }
+        if message.metadata == nil {
+            message.metadata = metadata
+            return
+        }
+        for (key, value) in metadata {
+            message.metadata?[key] = value
         }
     }
 

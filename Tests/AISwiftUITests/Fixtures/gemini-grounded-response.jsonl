@@ -1,0 +1,19 @@
+data: {"type":"start","messageId":"msg-gemini-grounded-001"}
+
+data: {"type":"start-step"}
+
+data: {"type":"text-start","id":"text_1"}
+
+data: {"type":"text-delta","id":"text_1","delta":"Swift was introduced by Apple in 2014. "}
+
+data: {"type":"text-delta","id":"text_1","delta":"It is now open source and used for system programming."}
+
+data: {"type":"text-end","id":"text_1"}
+
+data: {"type":"finish-step"}
+
+data: {"type":"message-metadata","messageMetadata":{"google":{"groundingMetadata":{"groundingChunks":[{"web":{"uri":"https://swift.org","title":"Swift.org"}},{"web":{"uri":"https://developer.apple.com/swift/","title":"Apple Swift"}}],"groundingSupports":[{"segment":{"startIndex":0,"endIndex":50,"text":"Swift was introduced by Apple in 2014."},"groundingChunkIndices":[0],"confidenceScores":[0.95]},{"segment":{"startIndex":51,"endIndex":110,"text":"It is now open source and used for system programming."},"groundingChunkIndices":[0,1],"confidenceScores":[0.92,0.88]}],"webSearchQueries":["Swift programming language history","Swift open source"],"searchEntryPoint":{"renderedContent":"<html><body>Swift search results</body></html>"}}}}}
+
+data: {"type":"finish","finishReason":"stop"}
+
+data: [DONE]

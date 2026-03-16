@@ -187,4 +187,82 @@ struct ModelCodableTests {
             Issue.record("Expected file part")
         }
     }
+
+    // MARK: - FilePart new modes
+
+    @Test func filePartWithFileIdRoundTrip() throws {
+        let fp = FilePart.withFileId("file-abc123", mediaType: "application/pdf", name: "report.pdf")
+        let part = UIMessagePart.file(fp)
+        let decoded = try roundTrip(part)
+        #expect(decoded == part)
+        if case .file(let decodedFp) = decoded {
+            #expect(decodedFp.fileId == "file-abc123")
+            #expect(decodedFp.mediaType == "application/pdf")
+            #expect(decodedFp.name == "report.pdf")
+        } else {
+            Issue.record("Expected file part")
+        }
+    }
+
+    @Test func filePartWithDataRoundTrip() throws {
+        let rawData = Data([0x25, 0x50, 0x44, 0x46]) // %PDF
+        let fp = FilePart.withData(rawData, mediaType: "application/pdf", name: "inline.pdf")
+        let part = UIMessagePart.file(fp)
+        let decoded = try roundTrip(part)
+        #expect(decoded == part)
+        if case .file(let decodedFp) = decoded {
+            #expect(decodedFp.data == rawData)
+            #expect(decodedFp.mediaType == "application/pdf")
+        } else {
+            Issue.record("Expected file part")
+        }
+    }
+
+    @Test func imagePartRoundTrip() throws {
+        let fp = FilePart(url: "https://example.com/photo.png", mediaType: "image/png", name: "photo.png")
+        let part = UIMessagePart.image(fp)
+        let decoded = try roundTrip(part)
+        #expect(decoded == part)
+        if case .image(let decodedFp) = decoded {
+            #expect(decodedFp.url == "https://example.com/photo.png")
+            #expect(decodedFp.mediaType == "image/png")
+        } else {
+            Issue.record("Expected image part")
+        }
+    }
+
+    @Test func imagePartWithFileIdRoundTrip() throws {
+        let fp = FilePart.withFileId("img-xyz", mediaType: "image/jpeg")
+        let part = UIMessagePart.image(fp)
+        let decoded = try roundTrip(part)
+        #expect(decoded == part)
+        if case .image(let decodedFp) = decoded {
+            #expect(decodedFp.fileId == "img-xyz")
+        } else {
+            Issue.record("Expected image part")
+        }
+    }
+
+    @Test func newUIMessageWithImages() {
+        let img = FilePart(url: "https://example.com/img.png", mediaType: "image/png")
+        let newMsg = NewUIMessage.user(text: "Look at this", images: [img])
+        let msg = newMsg.makeMessage(id: "msg-img-001")
+        #expect(msg.parts.count == 2)
+        if case .image(let fp) = msg.parts[1] {
+            #expect(fp.url == "https://example.com/img.png")
+        } else {
+            Issue.record("Expected image part")
+        }
+    }
+
+    @Test func newUIMessageWithFilesAndImages() {
+        let file = FilePart(url: "data:application/pdf;base64,abc", mediaType: "application/pdf")
+        let img = FilePart(url: "https://example.com/img.png", mediaType: "image/png")
+        let newMsg = NewUIMessage.user(text: "Mixed", files: [file], images: [img])
+        let msg = newMsg.makeMessage(id: "msg-mixed")
+        // text + file + image
+        #expect(msg.parts.count == 3)
+        guard case .file = msg.parts[1] else { Issue.record("Expected file at index 1"); return }
+        guard case .image = msg.parts[2] else { Issue.record("Expected image at index 2"); return }
+    }
 }

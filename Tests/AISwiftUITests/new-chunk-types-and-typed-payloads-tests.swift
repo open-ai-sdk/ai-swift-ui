@@ -65,7 +65,10 @@ struct NewChunkTypeDecodingTests {
     // MARK: - source-document
 
     @Test func decodesSourceDocumentChunk() throws {
-        let json = #"data: {"type":"source-document","sourceId":"doc-1","mediaType":"application/pdf","title":"Research Paper","filename":"paper.pdf"}"#
+        let json = """
+            data: {"type":"source-document","sourceId":"doc-1",\
+            "mediaType":"application/pdf","title":"Research Paper","filename":"paper.pdf"}
+            """
         let chunk = try decoder.decode(json)
         guard case .sourceDocument(let sourceId, let mediaType, let title, let filename) = chunk else {
             Issue.record("Expected .sourceDocument"); return

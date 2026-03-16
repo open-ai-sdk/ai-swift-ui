@@ -69,8 +69,13 @@ public extension UIMessage {
         }
     }
 
-    /// Convenience alias for message-level metadata.
-    var messageMetadataValue: [String: JSONValue]? { metadata }
+    /// Parts suitable for persistence (filters out transient data parts).
+    var persistableParts: [UIMessagePart] {
+        parts.filter { part in
+            if case .data(let dp) = part, dp.isTransient { return false }
+            return true
+        }
+    }
 
     /// Extracts typed Google grounding metadata from the message metadata dictionary.
     var googleGroundingMetadata: GoogleGroundingMetadata? {

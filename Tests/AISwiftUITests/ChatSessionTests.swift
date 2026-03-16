@@ -178,6 +178,26 @@ struct ChatSessionTests {
         #expect(dataEvents[0].0 == "plan")
     }
 
+    @Test func startChunkMetadataIsPreservedOnAssistantMessage() async throws {
+        let transport = MockChatTransport(chunks: [
+            .start(messageId: "msg-meta", metadata: ["model": .string("gemini-2.5-flash")]),
+            .startStep,
+            .textStart(id: "t1"),
+            .textDelta(id: "t1", delta: "answer"),
+            .textEnd(id: "t1"),
+            .finishStep,
+            .finish(finishReason: "stop", metadata: ["totalTokens": .int(123)]),
+        ])
+        let session = ChatSession(id: "session-meta", transport: transport)
+
+        await session.send(.user(text: "query"))
+
+        #expect(session.messages.count == 2)
+        let assistant = session.messages[1]
+        #expect(assistant.metadata?["model"]?.stringValue == "gemini-2.5-flash")
+        #expect(assistant.metadata?["totalTokens"]?.intValue == 123)
+    }
+
     @Test func clearErrorResetsStatus() async throws {
         struct TestError: Error {}
         let transport = MockChatTransport(

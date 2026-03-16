@@ -31,8 +31,9 @@ struct StreamChunkDecoderTests {
 
     @Test func decodesStartChunk() throws {
         let chunk = try decoder.decode(#"data: {"type":"start","messageId":"msg-001"}"#)
-        guard case .start(let msgId) = chunk else { Issue.record("Expected start"); return }
+        guard case .start(let msgId, let metadata) = chunk else { Issue.record("Expected start"); return }
         #expect(msgId == "msg-001")
+        #expect(metadata == nil)
     }
 
     @Test func decodesTextDelta() throws {

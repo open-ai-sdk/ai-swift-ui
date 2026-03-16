@@ -5,7 +5,7 @@ import Observation
 ///
 /// `ChatSession` manages the full lifecycle of a chat conversation:
 /// optimistic user message appending, assistant response streaming,
-/// cancellation, regeneration, and error handling.
+/// cancellation, regeneration, tool-result round-trips, and error handling.
 ///
 /// Observe `messages`, `status`, and `error` from SwiftUI views.
 ///
@@ -22,13 +22,13 @@ public final class ChatSession: Identifiable {
     public let id: String
 
     /// The ordered list of messages in the conversation.
-    public private(set) var messages: [UIMessage]
+    public internal(set) var messages: [UIMessage]
 
     /// The current lifecycle status.
-    public private(set) var status: ChatStatus
+    public internal(set) var status: ChatStatus
 
     /// The last error, if `status == .error`.
-    public private(set) var error: (any Error)?
+    public internal(set) var error: (any Error)?
 
     /// The finish reason from the last completed stream (e.g. "stop", "length").
     public private(set) var finishReason: String?
@@ -39,20 +39,41 @@ public final class ChatSession: Identifiable {
     // MARK: - Callbacks
 
     /// Called when the assistant message is fully received.
-    /// Parameters: the finished message and optional finish reason.
     public var onFinish: ((UIMessage, String?) -> Void)?
 
     /// Called when a stream error occurs.
     public var onError: ((any Error) -> Void)?
 
     /// Called for each `data-*` chunk received.
-    /// Parameters: chunk name, raw payload.
     public var onDataPart: ((String, Any) -> Void)?
 
-    // MARK: - Private state
+    /// Called when a tool part transitions to `.inputAvailable`.
+    /// Return a `JSONValue` to auto-record the result; return `nil` to handle manually.
+    public var onToolCall: ((ToolInvocationPart) async -> JSONValue?)?
 
-    private let transport: any ChatTransport
+    /// When set, evaluated after each `addToolResult`.
+    /// If it returns `true` and status is `.ready`, the session auto-resubmits.
+    public var sendAutomaticallyWhen: (([UIMessage]) async -> Bool)?
+
+    /// Word-level smoothing delay. Set to enable smooth stream rendering.
+    public var smoothStreamDelay: Duration?
+
+    // MARK: - Attachments
+
+    /// The uploader for pending attachments. Set to enable attachment pipeline.
+    public var attachmentUploader: (any AttachmentUploader)?
+
+    /// Attachments staged for the next send.
+    public internal(set) var pendingAttachments: [PendingAttachment] = []
+
+    // MARK: - Internal state
+
+    let transport: any ChatTransport
     private var streamTask: Task<Void, Never>?
+
+    /// Current tool-call iteration depth; reset to 0 on each `send`/`regenerate`.
+    var toolIterationCount: Int = 0
+
 
     // MARK: - Init
 
@@ -70,27 +91,39 @@ public final class ChatSession: Identifiable {
     // MARK: - Public API
 
     /// Send a new user message and start streaming the assistant response.
-    ///
-    /// - Parameters:
-    ///   - message: The user message to append.
-    ///   - options: Optional per-request options (headers, body, metadata).
     public func send(_ message: NewUIMessage, options: ChatRequestOptions? = nil) async {
         guard status == .ready || status == .error else { return }
-
-        // Clear previous error state
         error = nil
         status = .submitted
+        toolIterationCount = 0
 
-        // Optimistically append user message
-        let userMsg = message.makeMessage()
-        messages.append(userMsg)
+        var outgoing = message
+        if !pendingAttachments.isEmpty, let uploader = attachmentUploader {
+            let toUpload = pendingAttachments
+            pendingAttachments.removeAll()
+            do {
+                let uploaded = try await withThrowingTaskGroup(of: FilePart.self) { group in
+                    for attachment in toUpload {
+                        group.addTask { try await uploader.upload(attachment) }
+                    }
+                    var results: [FilePart] = []
+                    for try await part in group { results.append(part) }
+                    return results
+                }
+                outgoing.files += uploaded
+            } catch {
+                self.error = error
+                self.status = .error
+                onError?(error)
+                return
+            }
+        }
 
-        // Create assistant placeholder
+        messages.append(outgoing.makeMessage())
+
         let assistantId = UUID().uuidString
-        let placeholder = UIMessage(id: assistantId, role: .assistant, parts: [])
-        messages.append(placeholder)
-
-        await streamAssistant(assistantId: assistantId, options: options)
+        messages.append(UIMessage(id: assistantId, role: .assistant, parts: []))
+        await streamAssistant(assistantId: assistantId, options: options, toolIteration: 0)
     }
 
     /// Stop the current stream. Status will return to `.ready`.
@@ -106,73 +139,100 @@ public final class ChatSession: Identifiable {
     public func regenerate(options: ChatRequestOptions? = nil) async {
         guard status == .ready || status == .error else { return }
 
-        // Remove trailing assistant message(s)
         while let last = messages.last, last.role == .assistant {
             messages.removeLast()
         }
-        guard let lastUser = messages.last, lastUser.role == .user else { return }
+        guard messages.last?.role == .user else { return }
 
         error = nil
         status = .submitted
+        toolIterationCount = 0
 
-        // Re-append assistant placeholder
         let assistantId = UUID().uuidString
-        let placeholder = UIMessage(id: assistantId, role: .assistant, parts: [])
-        messages.append(placeholder)
-
-        await streamAssistant(assistantId: assistantId, options: options)
+        messages.append(UIMessage(id: assistantId, role: .assistant, parts: []))
+        await streamAssistant(assistantId: assistantId, options: options, toolIteration: 0)
     }
 
     /// Clear the current error and reset status to `.ready`.
     public func clearError() {
         error = nil
-        if status == .error {
-            status = .ready
-        }
+        if status == .error { status = .ready }
     }
 
-    // MARK: - Private streaming
+    // MARK: - Internal streaming
 
-    private func streamAssistant(assistantId: String, options: ChatRequestOptions?) async {
+    func streamAssistant(assistantId: String, options: ChatRequestOptions?, toolIteration: Int) async {
+        toolIterationCount = toolIteration
         let request = TransportSendRequest(id: id, messages: messages, options: options)
         var reducer = UIMessageStreamReducer(messageId: assistantId)
-        // Track current assistant message ID (may change if server assigns new ID via start chunk)
         var currentAssistantId = assistantId
+        // Cache the assistant message index to avoid O(n) scan per chunk
+        let assistantIdx = messages.count - 1
 
         let task = Task { [weak self] in
             guard let self else { return }
             do {
                 await MainActor.run { self.status = .streaming }
-                for try await chunk in transport.send(request) {
+                let rawStream = transport.send(request)
+                let stream: AsyncThrowingStream<UIMessageChunk, any Error>
+                if let delay = smoothStreamDelay {
+                    stream = smoothStream(rawStream, delay: delay)
+                } else {
+                    stream = rawStream
+                }
+                let shouldTrackTools = self.onToolCall != nil && toolIteration < ChatSession.maxToolIterations
+                for try await chunk in stream {
                     if Task.isCancelled { break }
                     await MainActor.run {
-                        // Handle start chunk: server may assign a different message ID
-                        if case .start(let serverId) = chunk {
-                            // Rename the placeholder to the server-assigned ID
-                            if let idx = self.messages.firstIndex(where: { $0.id == currentAssistantId }) {
-                                var renamed = self.messages[idx]
-                                renamed = UIMessage(id: serverId, role: renamed.role, parts: renamed.parts, createdAt: renamed.createdAt)
-                                self.messages[idx] = renamed
+                        if case .start(let serverId, _) = chunk {
+                            if assistantIdx < self.messages.count, self.messages[assistantIdx].id == currentAssistantId {
+                                let old = self.messages[assistantIdx]
+                                self.messages[assistantIdx] = UIMessage(id: serverId, role: old.role, parts: old.parts, createdAt: old.createdAt)
                             }
                             currentAssistantId = serverId
                             reducer = UIMessageStreamReducer(messageId: serverId)
-                            return
+                        }
+
+                        // Snapshot tool state only when tracking tools (avoids hot-path alloc)
+                        let prevInputAvailable: Set<String>?
+                        if shouldTrackTools {
+                            prevInputAvailable = Set(
+                                reducer.message.toolInvocations
+                                    .filter { $0.state == .inputAvailable }
+                                    .map { $0.toolCallId }
+                            )
+                        } else {
+                            prevInputAvailable = nil
                         }
 
                         reducer.apply(chunk)
-                        self.updateAssistantMessage(reducer.message, id: currentAssistantId)
+                        // Direct index update instead of linear scan
+                        if assistantIdx < self.messages.count {
+                            self.messages[assistantIdx] = reducer.message
+                        }
 
-                        // Fire onDataPart callback for data chunks
                         if case .data(let name, let payload, _, _) = chunk {
                             self.onDataPart?(name, payload.rawValue)
                         }
-
-                        // Handle abort chunk
                         if case .abort(let reason) = chunk {
                             self.isAborted = true
-                            let abortError = AbortError(reason: reason)
-                            self.error = abortError
-                            self.onError?(abortError)
+                            let err = AbortError(reason: reason)
+                            self.error = err
+                            self.onError?(err)
+                        }
+
+                        // Fire onToolCall for newly inputAvailable parts
+                        guard let prev = prevInputAvailable else { return }
+                        let newlyReady = reducer.message.toolInvocations.filter {
+                            $0.state == .inputAvailable && !prev.contains($0.toolCallId)
+                        }
+                        guard !newlyReady.isEmpty else { return }
+                        Task {
+                            for tip in newlyReady {
+                                if let result = await self.onToolCall?(tip) {
+                                    await self.addToolResult(toolCallId: tip.toolCallId, output: result, options: options)
+                                }
+                            }
                         }
                     }
                 }
@@ -182,20 +242,13 @@ public final class ChatSession: Identifiable {
                     }
                 }
             } catch {
-                await MainActor.run {
-                    self.handleStreamError(error, assistantId: currentAssistantId)
-                }
+                await MainActor.run { self.handleStreamError(error, assistantId: currentAssistantId) }
             }
         }
 
         streamTask = task
         await task.value
         streamTask = nil
-    }
-
-    private func updateAssistantMessage(_ message: UIMessage, id: String) {
-        guard let idx = messages.firstIndex(where: { $0.id == id }) else { return }
-        messages[idx] = message
     }
 
     private func finalizeStream(assistantId: String, reducer: UIMessageStreamReducer) {
@@ -208,7 +261,6 @@ public final class ChatSession: Identifiable {
     }
 
     private func handleStreamError(_ streamError: any Error, assistantId: String) {
-        // Remove the empty assistant placeholder if it has no content
         if let idx = messages.firstIndex(where: { $0.id == assistantId }),
            messages[idx].primaryText.isEmpty,
            messages[idx].toolInvocations.isEmpty {

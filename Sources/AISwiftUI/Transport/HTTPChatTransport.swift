@@ -22,11 +22,15 @@ public final class HTTPChatTransport: ChatTransport, @unchecked Sendable {
     /// Return the modified request. Returning `nil` uses the default encoding.
     public var requestBuilder: (@Sendable (TransportSendRequest, URLRequest) throws -> URLRequest)?
 
+    /// Optional token provider for injecting `Authorization: Bearer <token>` headers.
+    public var tokenProvider: (any TokenProvider)?
+
     private let session: URLSession
     private let decoder = UIMessageChunkDecoder()
 
     public init(
         apiURL: URL,
+        tokenProvider: (any TokenProvider)? = nil,
         headers: @escaping @Sendable () -> [String: String] = { [:] },
         requestBuilder: (@Sendable (TransportSendRequest, URLRequest) throws -> URLRequest)? = nil,
         session: URLSession = .shared
@@ -35,13 +39,14 @@ public final class HTTPChatTransport: ChatTransport, @unchecked Sendable {
         self.headers = headers
         self.requestBuilder = requestBuilder
         self.session = session
+        self.tokenProvider = tokenProvider
     }
 
     public func send(_ request: TransportSendRequest) -> AsyncThrowingStream<UIMessageChunk, any Error> {
         AsyncThrowingStream { continuation in
             let task = Task {
                 do {
-                    let urlRequest = try self.buildURLRequest(for: request)
+                    let urlRequest = try await self.buildURLRequestAsync(for: request)
                     let (bytes, response) = try await self.session.bytes(for: urlRequest)
 
                     if let httpResponse = response as? HTTPURLResponse,
@@ -65,6 +70,14 @@ public final class HTTPChatTransport: ChatTransport, @unchecked Sendable {
     }
 
     // MARK: - Internal helpers (accessible via @testable import)
+
+    func buildURLRequestAsync(for request: TransportSendRequest) async throws -> URLRequest {
+        var urlRequest = try buildURLRequest(for: request)
+        if let provider = tokenProvider, let token = try await provider.accessToken() {
+            urlRequest.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        }
+        return urlRequest
+    }
 
     func buildURLRequest(for request: TransportSendRequest) throws -> URLRequest {
         var urlRequest = URLRequest(url: apiURL)

@@ -29,6 +29,17 @@ struct NewChunkTypeDecodingTests {
         #expect(metadata.isEmpty)
     }
 
+    @Test func decodesStartChunkWithMessageMetadata() throws {
+        let json = #"data: {"type":"start","messageId":"msg-start","messageMetadata":{"createdAt":123,"model":"gemini-2.5-flash"}}"#
+        let chunk = try decoder.decode(json)
+        guard case .start(let messageId, let metadata) = chunk else {
+            Issue.record("Expected .start"); return
+        }
+        #expect(messageId == "msg-start")
+        #expect(metadata?["createdAt"]?.intValue == 123)
+        #expect(metadata?["model"]?.stringValue == "gemini-2.5-flash")
+    }
+
     // MARK: - abort
 
     @Test func decodesAbortChunkWithReason() throws {
@@ -60,6 +71,17 @@ struct NewChunkTypeDecodingTests {
         #expect(sourceId == "src-abc")
         #expect(url == "https://example.com")
         #expect(title == "Example Page")
+    }
+
+    @Test func decodesSourceURLChunkWithoutTitle() throws {
+        let json = #"data: {"type":"source-url","sourceId":"src-abc","url":"https://example.com"}"#
+        let chunk = try decoder.decode(json)
+        guard case .sourceURL(let sourceId, let url, let title) = chunk else {
+            Issue.record("Expected .sourceURL"); return
+        }
+        #expect(sourceId == "src-abc")
+        #expect(url == "https://example.com")
+        #expect(title == nil)
     }
 
     // MARK: - source-document
@@ -96,19 +118,31 @@ struct NewChunkTypeDecodingTests {
     @Test func decodesFinishChunkWithFinishReason() throws {
         let json = #"data: {"type":"finish","finishReason":"stop"}"#
         let chunk = try decoder.decode(json)
-        guard case .finish(let reason) = chunk else {
+        guard case .finish(let reason, let metadata) = chunk else {
             Issue.record("Expected .finish"); return
         }
         #expect(reason == "stop")
+        #expect(metadata == nil)
     }
 
     @Test func decodesFinishChunkWithoutFinishReason() throws {
         let json = #"data: {"type":"finish"}"#
         let chunk = try decoder.decode(json)
-        guard case .finish(let reason) = chunk else {
+        guard case .finish(let reason, let metadata) = chunk else {
             Issue.record("Expected .finish"); return
         }
         #expect(reason == nil)
+        #expect(metadata == nil)
+    }
+
+    @Test func decodesFinishChunkWithMessageMetadata() throws {
+        let json = #"data: {"type":"finish","finishReason":"stop","messageMetadata":{"totalTokens":321}}"#
+        let chunk = try decoder.decode(json)
+        guard case .finish(let reason, let metadata) = chunk else {
+            Issue.record("Expected .finish"); return
+        }
+        #expect(reason == "stop")
+        #expect(metadata?["totalTokens"]?.intValue == 321)
     }
 
     // MARK: - data-* with transient and id
@@ -150,6 +184,15 @@ struct ReducerNewChunkTests {
         #expect(reducer.message.metadata?["model"]?.stringValue == "gpt-4o")
         #expect(reducer.message.metadata?["tokens"]?.intValue == 500)
         #expect(reducer.isFinished)
+    }
+
+    @Test func reducerMergesMetadataAcrossStartAndFinish() {
+        var reducer = UIMessageStreamReducer(messageId: "msg-meta-merge")
+        reducer.apply(.start(messageId: "msg-meta-merge", metadata: ["model": .string("gemini-2.5-flash")]))
+        reducer.apply(.finish(finishReason: "stop", metadata: ["totalTokens": .int(222)]))
+
+        #expect(reducer.message.metadata?["model"]?.stringValue == "gemini-2.5-flash")
+        #expect(reducer.message.metadata?["totalTokens"]?.intValue == 222)
     }
 
     // MARK: - abort → isAborted
@@ -232,10 +275,7 @@ struct ReducerNewChunkTests {
         reducer.apply(.data(name: "plan", payload: .string("do research"), isTransient: true, dataId: "plan-001"))
 
         let dataParts = reducer.message.dataParts
-        #expect(dataParts.count == 1)
-        #expect(dataParts[0].isTransient == true)
-        #expect(dataParts[0].id == "plan-001")
-        #expect(dataParts[0].name == "plan")
+        #expect(dataParts.isEmpty)
     }
 
     @Test func reducerCreatesNonTransientDataPartByDefault() {
@@ -246,6 +286,17 @@ struct ReducerNewChunkTests {
         #expect(dataParts.count == 1)
         #expect(dataParts[0].isTransient == false)
         #expect(dataParts[0].id == nil)
+    }
+
+    @Test func reducerReconcilesDataPartByMatchingIdAndName() {
+        var reducer = UIMessageStreamReducer(messageId: "msg-reconcile")
+        reducer.apply(.data(name: "plan", payload: .string("draft"), isTransient: false, dataId: "plan-1"))
+        reducer.apply(.data(name: "plan", payload: .string("final"), isTransient: false, dataId: "plan-1"))
+
+        let dataParts = reducer.message.dataParts
+        #expect(dataParts.count == 1)
+        #expect(dataParts[0].id == "plan-1")
+        #expect(dataParts[0].researchPlan == "final")
     }
 
     // MARK: - finishReason
@@ -334,9 +385,4 @@ struct UIMessageMetadataCodableTests {
         #expect(decoded.metadata == nil)
     }
 
-    @Test func uiMessageMetadataValueAlias() {
-        let metadata: [String: JSONValue] = ["key": .string("val")]
-        let msg = UIMessage(id: "msg-3", role: .assistant, metadata: metadata)
-        #expect(msg.messageMetadataValue?["key"]?.stringValue == "val")
-    }
 }

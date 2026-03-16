@@ -150,8 +150,7 @@ struct SessionEnhancementsTests {
         try await Task.sleep(nanoseconds: 10_000_000)
 
         // resubmit should be blocked while streaming
-        let transport2 = MockChatTransport(chunks: makeTextChunks(msgId: "extra", text: "extra"))
-        let _ = transport2  // intentionally unused
+        _ = MockChatTransport(chunks: makeTextChunks(msgId: "extra", text: "extra"))
         await session.resubmit()  // should be no-op
 
         await sendTask.value

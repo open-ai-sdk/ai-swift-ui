@@ -99,9 +99,8 @@ struct ToolResultLoopTests {
 
         nonisolated(unsafe) var callCount = 0
         // Return nil to avoid triggering autoResubmit; we just verify callback fires
-        session.onToolCall = { tip in
+        session.onToolCall = { _ in
             callCount += 1
-            // Manually call addToolResult after verifying it fires
             return nil
         }
 

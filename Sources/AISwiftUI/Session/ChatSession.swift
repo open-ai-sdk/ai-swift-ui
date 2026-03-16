@@ -74,7 +74,6 @@ public final class ChatSession: Identifiable {
     /// Current tool-call iteration depth; reset to 0 on each `send`/`regenerate`.
     var toolIterationCount: Int = 0
 
-
     // MARK: - Init
 
     public init(
@@ -187,7 +186,10 @@ public final class ChatSession: Identifiable {
                         if case .start(let serverId, _) = chunk {
                             if assistantIdx < self.messages.count, self.messages[assistantIdx].id == currentAssistantId {
                                 let old = self.messages[assistantIdx]
-                                self.messages[assistantIdx] = UIMessage(id: serverId, role: old.role, parts: old.parts, createdAt: old.createdAt)
+                                self.messages[assistantIdx] = UIMessage(
+                                    id: serverId, role: old.role,
+                                    parts: old.parts, createdAt: old.createdAt
+                                )
                             }
                             currentAssistantId = serverId
                             reducer = UIMessageStreamReducer(messageId: serverId)

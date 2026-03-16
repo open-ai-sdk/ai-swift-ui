@@ -384,5 +384,4 @@ struct UIMessageMetadataCodableTests {
         let decoded = try JSONDecoder().decode(UIMessage.self, from: encoded)
         #expect(decoded.metadata == nil)
     }
-
 }

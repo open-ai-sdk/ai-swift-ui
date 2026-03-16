@@ -93,7 +93,7 @@ struct StreamChunkDecoderTests {
     @Test func decodesDataChunk() throws {
         let json = #"data: {"type":"data-plan","data":{"content":"step 1"}}"#
         let chunk = try decoder.decode(json)
-        guard case .data(let name, let payload) = chunk else { Issue.record("Expected data"); return }
+        guard case .data(let name, let payload, _, _) = chunk else { Issue.record("Expected data"); return }
         #expect(name == "plan")
         if case .object(let obj) = payload, case .string(let content) = obj["content"] {
             #expect(content == "step 1")

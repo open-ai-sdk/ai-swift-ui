@@ -8,8 +8,8 @@ public enum UIMessageChunk: Sendable {
     case startStep
     /// Current step finished.
     case finishStep
-    /// Stream finished successfully.
-    case finish
+    /// Stream finished successfully; `finishReason` from the server (e.g. "stop", "length").
+    case finish(finishReason: String? = nil)
     /// Stream terminated with an error.
     case error(text: String)
 
@@ -47,5 +47,22 @@ public enum UIMessageChunk: Sendable {
 
     // MARK: - Custom data
     /// A custom `data-{name}` chunk carrying an arbitrary JSON payload.
-    case data(name: String, payload: JSONValue)
+    case data(name: String, payload: JSONValue, isTransient: Bool = false, dataId: String? = nil)
+
+    // MARK: - New chunk types (ai-3on.7)
+
+    /// Message-level metadata from a `message-metadata` chunk.
+    case messageMetadata(metadata: [String: JSONValue])
+
+    /// Stream aborted; optional human-readable reason.
+    case abort(reason: String?)
+
+    /// A structured source URL reference from a `source-url` chunk.
+    case sourceURL(sourceId: String, url: String, title: String)
+
+    /// A structured source document reference from a `source-document` chunk.
+    case sourceDocument(sourceId: String, mediaType: String, title: String, filename: String)
+
+    /// A file attachment from a `file` chunk.
+    case file(url: String, mediaType: String)
 }

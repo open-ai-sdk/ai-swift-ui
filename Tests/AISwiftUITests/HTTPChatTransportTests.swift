@@ -147,7 +147,7 @@ struct MockTransportTests {
             .textDelta(id: "t1", delta: "Hello"),
             .textEnd(id: "t1"),
             .finishStep,
-            .finish,
+            .finish(),
         ])
 
         var reducer = UIMessageStreamReducer(messageId: "msg-1")
@@ -191,7 +191,7 @@ struct MockTransportTests {
             .sources([SourceURLPart(url: "https://go.dev", title: "Go")]),
             .data(name: "plan", payload: .object(["step": .string("done")])),
             .finishStep,
-            .finish,
+            .finish(),
         ]
 
         let transport = MockChatTransport(chunks: chunks)

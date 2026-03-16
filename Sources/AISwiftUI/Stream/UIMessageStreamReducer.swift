@@ -14,6 +14,12 @@ public struct UIMessageStreamReducer: Sendable {
     /// Set to `true` when a `finish` chunk is received.
     public private(set) var isFinished: Bool = false
 
+    /// The finish reason from the `finish` chunk (e.g. "stop", "length").
+    public private(set) var finishReason: String?
+
+    /// Set to `true` when an `abort` chunk is received.
+    public private(set) var isAborted: Bool = false
+
     // MARK: - Private mutable state
 
     // Tracks open text/reasoning block indices by their id
@@ -34,8 +40,9 @@ public struct UIMessageStreamReducer: Sendable {
             resetState(messageId: msgId)
         case .startStep, .finishStep, .textEnd, .toolInputDelta:
             break
-        case .finish:
+        case .finish(let reason):
             isFinished = true
+            finishReason = reason
         case .error(let text):
             error = text
         case .textStart, .textDelta:
@@ -48,8 +55,21 @@ public struct UIMessageStreamReducer: Sendable {
             message.parts.append(.sourceURL(SourceURLPart(id: id, url: url, title: title)))
         case .sources(let list):
             for src in list { message.parts.append(.sourceURL(src)) }
-        case .data(let name, let payload):
-            applyDataChunk(name: name, payload: payload)
+        case .data(let name, let payload, let isTransient, let dataId):
+            applyDataChunk(name: name, payload: payload, isTransient: isTransient, dataId: dataId)
+        case .messageMetadata(let metadata):
+            message.metadata = metadata
+        case .abort(let reason):
+            isAborted = true
+            error = reason ?? "aborted"
+        case .sourceURL(let sourceId, let url, let title):
+            message.parts.append(.sourceURL(SourceURLPart(id: sourceId, url: url, title: title)))
+        case .sourceDocument(let sourceId, let mediaType, let title, let filename):
+            message.parts.append(.sourceDocument(SourceDocumentPart(
+                id: sourceId, title: title, mediaType: mediaType, url: nil, content: nil, filename: filename
+            )))
+        case .file(let url, let mediaType):
+            message.parts.append(.file(FilePart(url: url, mediaType: mediaType)))
         }
     }
 
@@ -127,7 +147,7 @@ public struct UIMessageStreamReducer: Sendable {
 
     /// Handles `data-*` chunks. `data-document-references` is promoted to
     /// `.sourceDocument` parts; all others land as generic `DataPart`.
-    private mutating func applyDataChunk(name: String, payload: JSONValue) {
+    private mutating func applyDataChunk(name: String, payload: JSONValue, isTransient: Bool = false, dataId: String? = nil) {
         if name == "document-references", case .array(let items) = payload {
             for item in items {
                 guard case .object(let obj) = item else { continue }
@@ -136,7 +156,7 @@ public struct UIMessageStreamReducer: Sendable {
                 message.parts.append(.sourceDocument(SourceDocumentPart(id: id, title: title)))
             }
         } else {
-            message.parts.append(.data(DataPart(name: name, data: payload)))
+            message.parts.append(.data(DataPart(name: name, data: payload, isTransient: isTransient, id: dataId)))
         }
     }
 

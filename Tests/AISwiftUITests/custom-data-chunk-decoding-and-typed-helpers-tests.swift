@@ -13,7 +13,7 @@ struct CustomDataChunkDecodingAndTypedHelpersTests {
     @Test func decodesDataUsageChunk() throws {
         let json = #"data: {"type":"data-usage","data":{"promptTokens":120,"completionTokens":45,"totalTokens":165}}"#
         let chunk = try decoder.decode(json)
-        guard case .data(let name, let payload) = chunk else {
+        guard case .data(let name, let payload, _, _) = chunk else {
             Issue.record("Expected .data chunk"); return
         }
         #expect(name == "usage")
@@ -70,7 +70,7 @@ struct CustomDataChunkDecodingAndTypedHelpersTests {
         reducer.apply(.textEnd(id: "t1"))
         reducer.apply(.finishStep)
         reducer.apply(usageChunk)
-        reducer.apply(.finish)
+        reducer.apply(.finish())
 
         let usage = reducer.message.usageTokens
         #expect(usage?.promptTokens == 200)
@@ -86,7 +86,7 @@ struct CustomDataChunkDecodingAndTypedHelpersTests {
             + #"{"id":"doc-2","title":"Concurrency Guide"}]}"#
         let json = "data: " + payload
         let chunk = try decoder.decode(json)
-        guard case .data(let name, let payload) = chunk else {
+        guard case .data(let name, let payload, _, _) = chunk else {
             Issue.record("Expected .data chunk"); return
         }
         #expect(name == "document-references")
@@ -111,7 +111,7 @@ struct CustomDataChunkDecodingAndTypedHelpersTests {
                 .object(["id": .string("doc-2"), "title": .string("Concurrency Guide")]),
             ])),
             .finishStep,
-            .finish,
+            .finish(),
         ]
         var reducer = UIMessageStreamReducer(messageId: "msg-docs")
         reducer.applyAll(chunks)
@@ -131,7 +131,7 @@ struct CustomDataChunkDecodingAndTypedHelpersTests {
         var reducer = UIMessageStreamReducer(messageId: "msg-empty-docs")
         reducer.apply(.start(messageId: "msg-empty-docs"))
         reducer.apply(.data(name: "document-references", payload: .array([])))
-        reducer.apply(.finish)
+        reducer.apply(.finish())
 
         #expect(reducer.message.documentReferences.isEmpty)
         #expect(reducer.message.dataParts.isEmpty)
@@ -144,7 +144,7 @@ struct CustomDataChunkDecodingAndTypedHelpersTests {
                 .string("not-an-object"),
                 .object(["id": .string("doc-ok"), "title": .string("Valid Doc")]),
             ])),
-            .finish,
+            .finish(),
         ]
         var reducer = UIMessageStreamReducer(messageId: "msg-malformed")
         reducer.applyAll(chunks)
@@ -159,7 +159,7 @@ struct CustomDataChunkDecodingAndTypedHelpersTests {
     @Test func decodesDataSuggestedQuestionsChunk() throws {
         let json = #"data: {"type":"data-suggested-questions","data":{"questions":["What is X?","How does Y work?"]}}"#
         let chunk = try decoder.decode(json)
-        guard case .data(let name, let payload) = chunk else {
+        guard case .data(let name, let payload, _, _) = chunk else {
             Issue.record("Expected .data chunk"); return
         }
         #expect(name == "suggested-questions")
@@ -200,7 +200,7 @@ struct CustomDataChunkDecodingAndTypedHelpersTests {
             .data(name: "suggested-questions", payload: .object([
                 "questions": .array([.string("Follow-up A"), .string("Follow-up B")]),
             ])),
-            .finish,
+            .finish(),
         ]
         var reducer = UIMessageStreamReducer(messageId: "msg-sq")
         reducer.applyAll(chunks)

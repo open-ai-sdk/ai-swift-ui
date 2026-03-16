@@ -12,7 +12,7 @@ private func makeTextChunks(msgId: String, text: String) -> [UIMessageChunk] {
         .textDelta(id: "t1", delta: text),
         .textEnd(id: "t1"),
         .finishStep,
-        .finish,
+        .finish(),
     ]
 }
 
@@ -131,7 +131,7 @@ struct ChatSessionTests {
         let session = ChatSession(id: "session-cb", transport: transport)
 
         var finishedMessage: UIMessage?
-        session.onFinish = { msg in finishedMessage = msg }
+        session.onFinish = { msg, _ in finishedMessage = msg }
 
         await session.send(.user(text: "go"))
 
@@ -165,7 +165,7 @@ struct ChatSessionTests {
             .textDelta(id: "t1", delta: "answer"),
             .textEnd(id: "t1"),
             .finishStep,
-            .finish,
+            .finish(),
         ])
         let session = ChatSession(id: "session-data", transport: transport)
 

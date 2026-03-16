@@ -18,7 +18,7 @@ struct SessionIntegrationWithRealisticChunkSequencesTests {
             .textDelta(id: "text_1", delta: "How can I help you today?"),
             .textEnd(id: "text_1"),
             .finishStep,
-            .finish,
+            .finish(),
         ])
         let session = ChatSession(id: "sess-text", transport: transport)
         await session.send(.user(text: "Hi"))
@@ -45,7 +45,7 @@ struct SessionIntegrationWithRealisticChunkSequencesTests {
             .textDelta(id: "t1", delta: "The answer is 42."),
             .textEnd(id: "t1"),
             .finishStep,
-            .finish,
+            .finish(),
         ])
         let session = ChatSession(id: "sess-reasoning", transport: transport)
         await session.send(.user(text: "What is the answer?"))
@@ -89,7 +89,7 @@ struct SessionIntegrationWithRealisticChunkSequencesTests {
                 "completionTokens": .int(45),
                 "totalTokens": .int(165),
             ])),
-            .finish,
+            .finish(),
         ])
         let session = ChatSession(id: "sess-tool", transport: transport)
         await session.send(.user(text: "Explain Go concurrency"))
@@ -156,7 +156,7 @@ struct SessionIntegrationWithRealisticChunkSequencesTests {
                 "completionTokens": .int(89),
                 "totalTokens": .int(339),
             ])),
-            .finish,
+            .finish(),
         ])
         let session = ChatSession(id: "sess-deep", transport: transport)
         await session.send(.user(text: "What happened in AI in 2025?"))
@@ -217,7 +217,7 @@ struct SessionIntegrationWithRealisticChunkSequencesTests {
             .textDelta(id: "t1", delta: "Hello"),
             .textEnd(id: "t1"),
             .finishStep,
-            .finish,
+            .finish(),
         ])
         let session = ChatSession(id: "sess-id", transport: transport)
         await session.send(.user(text: "Hi"))
@@ -245,7 +245,7 @@ struct SessionIntegrationWithRealisticChunkSequencesTests {
             .data(name: "suggested-questions", payload: .object([
                 "questions": .array([.string("Q1")]),
             ])),
-            .finish,
+            .finish(),
         ])
         let session = ChatSession(id: "sess-data-cb", transport: transport)
 

@@ -7,17 +7,21 @@ public struct UIMessage: Identifiable, Sendable, Equatable {
     public var role: ChatRole
     public var parts: [UIMessagePart]
     public var createdAt: Date
+    /// Message-level metadata from a `message-metadata` chunk.
+    public var metadata: [String: JSONValue]?
 
     public init(
         id: String,
         role: ChatRole,
         parts: [UIMessagePart] = [],
-        createdAt: Date = Date()
+        createdAt: Date = Date(),
+        metadata: [String: JSONValue]? = nil
     ) {
         self.id = id
         self.role = role
         self.parts = parts
         self.createdAt = createdAt
+        self.metadata = metadata
     }
 }
 
@@ -65,6 +69,9 @@ public extension UIMessage {
         }
     }
 
+    /// Convenience alias for message-level metadata.
+    var messageMetadataValue: [String: JSONValue]? { metadata }
+
     /// Usage token counts if a `data-usage` chunk was received.
     var usageTokens: UsageTokens? {
         dataParts.compactMap(\.usageTokens).first
@@ -80,6 +87,6 @@ public extension UIMessage {
 
 extension UIMessage: Codable {
     private enum CodingKeys: String, CodingKey {
-        case id, role, parts, createdAt
+        case id, role, parts, createdAt, metadata
     }
 }

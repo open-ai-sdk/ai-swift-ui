@@ -198,6 +198,119 @@ struct TransportRequestBodyContractTests {
         #expect(fileParts[0]["name"] as? String == "notes.pdf")
     }
 
+    // MARK: - FilePart encoding modes
+
+    @Test func encodesFilePartWithFileId() throws {
+        let transport = HTTPChatTransport(apiURL: URL(string: "https://api.example.com/chat")!)
+        let fp = FilePart.withFileId("file-xyz789", mediaType: "application/pdf", name: "report.pdf")
+        let msg = UIMessage(id: "u1", role: .user, parts: [.file(fp)])
+        let request = TransportSendRequest(id: "sess-fileid", messages: [msg])
+        let urlReq = try transport.buildURLRequest(for: request)
+
+        guard let bodyData = urlReq.httpBody,
+              let parsed = try? JSONSerialization.jsonObject(with: bodyData) as? [String: Any],
+              let messages = parsed["messages"] as? [[String: Any]],
+              let parts = messages[0]["parts"] as? [[String: Any]] else {
+            Issue.record("Expected messages with parts"); return
+        }
+
+        let fileParts = parts.filter { $0["type"] as? String == "file" }
+        #expect(fileParts.count == 1)
+        #expect(fileParts[0]["fileId"] as? String == "file-xyz789")
+        #expect(fileParts[0]["mediaType"] as? String == "application/pdf")
+        #expect(fileParts[0]["name"] as? String == "report.pdf")
+        #expect(fileParts[0]["url"] == nil, "url must be absent when fileId is set")
+    }
+
+    @Test func encodesFilePartWithInlineData() throws {
+        let transport = HTTPChatTransport(apiURL: URL(string: "https://api.example.com/chat")!)
+        let rawData = Data([0x25, 0x50, 0x44, 0x46]) // %PDF
+        let fp = FilePart.withData(rawData, mediaType: "application/pdf", name: "inline.pdf")
+        let msg = UIMessage(id: "u1", role: .user, parts: [.file(fp)])
+        let request = TransportSendRequest(id: "sess-data", messages: [msg])
+        let urlReq = try transport.buildURLRequest(for: request)
+
+        guard let bodyData = urlReq.httpBody,
+              let parsed = try? JSONSerialization.jsonObject(with: bodyData) as? [String: Any],
+              let messages = parsed["messages"] as? [[String: Any]],
+              let parts = messages[0]["parts"] as? [[String: Any]] else {
+            Issue.record("Expected messages with parts"); return
+        }
+
+        let fileParts = parts.filter { $0["type"] as? String == "file" }
+        #expect(fileParts.count == 1)
+        #expect(fileParts[0]["data"] as? String == rawData.base64EncodedString())
+        #expect(fileParts[0]["mediaType"] as? String == "application/pdf")
+        #expect(fileParts[0]["url"] == nil, "url must be absent when data is set")
+        #expect(fileParts[0]["fileId"] == nil, "fileId must be absent when data is set")
+    }
+
+    @Test func encodesImagePartWithUrl() throws {
+        let transport = HTTPChatTransport(apiURL: URL(string: "https://api.example.com/chat")!)
+        let fp = FilePart(url: "https://example.com/photo.png", mediaType: "image/png", name: "photo.png")
+        let msg = UIMessage(id: "u1", role: .user, parts: [.image(fp)])
+        let request = TransportSendRequest(id: "sess-image", messages: [msg])
+        let urlReq = try transport.buildURLRequest(for: request)
+
+        guard let bodyData = urlReq.httpBody,
+              let parsed = try? JSONSerialization.jsonObject(with: bodyData) as? [String: Any],
+              let messages = parsed["messages"] as? [[String: Any]],
+              let parts = messages[0]["parts"] as? [[String: Any]] else {
+            Issue.record("Expected messages with parts"); return
+        }
+
+        let imageParts = parts.filter { $0["type"] as? String == "image" }
+        #expect(imageParts.count == 1)
+        #expect(imageParts[0]["url"] as? String == "https://example.com/photo.png")
+        #expect(imageParts[0]["mediaType"] as? String == "image/png")
+        #expect(imageParts[0]["name"] as? String == "photo.png")
+    }
+
+    @Test func fileIdTakesPriorityOverDataAndUrl() throws {
+        let transport = HTTPChatTransport(apiURL: URL(string: "https://api.example.com/chat")!)
+        // Manually craft a FilePart with all three fields set — fileId must win
+        var fp = FilePart(url: "https://example.com/doc.pdf", mediaType: "application/pdf")
+        fp.fileId = "file-priority"
+        fp.data = Data([0x01, 0x02])
+        let msg = UIMessage(id: "u1", role: .user, parts: [.file(fp)])
+        let request = TransportSendRequest(id: "sess-priority", messages: [msg])
+        let urlReq = try transport.buildURLRequest(for: request)
+
+        guard let bodyData = urlReq.httpBody,
+              let parsed = try? JSONSerialization.jsonObject(with: bodyData) as? [String: Any],
+              let messages = parsed["messages"] as? [[String: Any]],
+              let parts = messages[0]["parts"] as? [[String: Any]] else {
+            Issue.record("Expected messages with parts"); return
+        }
+
+        let fileParts = parts.filter { $0["type"] as? String == "file" }
+        #expect(fileParts.count == 1)
+        #expect(fileParts[0]["fileId"] as? String == "file-priority")
+        #expect(fileParts[0]["data"] == nil, "data must be absent when fileId wins")
+        #expect(fileParts[0]["url"] == nil, "url must be absent when fileId wins")
+    }
+
+    @Test func dataTakesPriorityOverUrl() throws {
+        let transport = HTTPChatTransport(apiURL: URL(string: "https://api.example.com/chat")!)
+        var fp = FilePart(url: "https://example.com/doc.pdf", mediaType: "application/pdf")
+        fp.data = Data([0x01, 0x02])
+        let msg = UIMessage(id: "u1", role: .user, parts: [.file(fp)])
+        let request = TransportSendRequest(id: "sess-data-priority", messages: [msg])
+        let urlReq = try transport.buildURLRequest(for: request)
+
+        guard let bodyData = urlReq.httpBody,
+              let parsed = try? JSONSerialization.jsonObject(with: bodyData) as? [String: Any],
+              let messages = parsed["messages"] as? [[String: Any]],
+              let parts = messages[0]["parts"] as? [[String: Any]] else {
+            Issue.record("Expected messages with parts"); return
+        }
+
+        let fileParts = parts.filter { $0["type"] as? String == "file" }
+        #expect(fileParts.count == 1)
+        #expect(fileParts[0]["data"] as? String == Data([0x01, 0x02]).base64EncodedString())
+        #expect(fileParts[0]["url"] == nil, "url must be absent when data wins")
+    }
+
     // MARK: - requestBuilder override
 
     @Test func requestBuilderCanProduceSecondBrainStyleEnvelope() throws {

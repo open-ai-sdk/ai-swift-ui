@@ -124,12 +124,26 @@ public final class HTTPChatTransport: ChatTransport, @unchecked Sendable {
         case .text(let p):
             return ["type": "text", "text": p.text]
         case .file(let p):
-            var d: [String: Any] = ["type": "file", "url": p.url, "mediaType": p.mediaType]
-            if let name = p.name { d["name"] = name }
-            return d
+            return encodeFilePart(p, type: "file")
+        case .image(let p):
+            return encodeFilePart(p, type: "image")
         default:
             return nil
         }
+    }
+
+    private func encodeFilePart(_ p: FilePart, type: String) -> [String: Any] {
+        var d: [String: Any] = ["type": type, "mediaType": p.mediaType]
+        if let name = p.name { d["name"] = name }
+        // Priority: fileId > data > url
+        if let fileId = p.fileId, !fileId.isEmpty {
+            d["fileId"] = fileId
+        } else if let data = p.data, !data.isEmpty {
+            d["data"] = data.base64EncodedString()
+        } else if !p.url.isEmpty {
+            d["url"] = p.url
+        }
+        return d
     }
 }
 

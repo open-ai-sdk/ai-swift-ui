@@ -6,6 +6,7 @@ public enum UIMessagePart: Sendable, Equatable {
     case sourceURL(SourceURLPart)
     case sourceDocument(SourceDocumentPart)
     case file(FilePart)
+    case image(FilePart)
     case data(DataPart)
 }
 
@@ -19,6 +20,7 @@ extension UIMessagePart: Codable {
         case sourceURL = "source-url"
         case sourceDocument = "source-document"
         case file
+        case image
         case data
     }
 
@@ -42,6 +44,8 @@ extension UIMessagePart: Codable {
             self = .sourceDocument(try SourceDocumentPart(from: decoder))
         case .file:
             self = .file(try FilePart(from: decoder))
+        case .image:
+            self = .image(try FilePart(from: decoder))
         case .data:
             self = .data(try DataPart(from: decoder))
         }
@@ -72,6 +76,10 @@ extension UIMessagePart: Codable {
         case .file(let p):
             var container = encoder.container(keyedBy: CodingKeys.self)
             try container.encode(PartType.file, forKey: .type)
+            try p.encode(to: encoder)
+        case .image(let p):
+            var container = encoder.container(keyedBy: CodingKeys.self)
+            try container.encode(PartType.image, forKey: .type)
             try p.encode(to: encoder)
         case .data(let p):
             var container = encoder.container(keyedBy: CodingKeys.self)

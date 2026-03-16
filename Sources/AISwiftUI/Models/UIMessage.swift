@@ -97,6 +97,49 @@ public extension UIMessage {
         }
     }
 
+    /// Safety ratings from Google provider metadata.
+    var googleSafetyRatings: [GoogleSafetyRating]? {
+        guard let meta = metadata,
+              case .object(let googleObj) = meta["google"],
+              let ratingsValue = googleObj["safetyRatings"],
+              case .array(let ratingsArr) = ratingsValue else { return nil }
+        let nsObj = JSONValue.array(ratingsArr).rawValue
+        guard let data = try? JSONSerialization.data(withJSONObject: nsObj) else { return nil }
+        return try? JSONDecoder().decode([GoogleSafetyRating].self, from: data)
+    }
+
+    /// URL context metadata from Google provider.
+    var googleURLContextMetadata: GoogleURLContextMetadata? {
+        guard let meta = metadata,
+              case .object(let googleObj) = meta["google"],
+              let urlCtxValue = googleObj["urlContextMetadata"],
+              case .object(let urlCtxObj) = urlCtxValue else { return nil }
+        let nsObj = JSONValue.object(urlCtxObj).rawValue
+        guard let data = try? JSONSerialization.data(withJSONObject: nsObj) else { return nil }
+        return try? JSONDecoder().decode(GoogleURLContextMetadata.self, from: data)
+    }
+
+    /// All grounding sources (web + retrieved-context + image + maps) as a flat list.
+    var allGroundingSources: [GroundingSource]? {
+        guard let chunks = googleGroundingMetadata?.groundingChunks else { return nil }
+        let results: [GroundingSource] = chunks.compactMap { chunk in
+            if let web = chunk.web, let uri = web.uri {
+                return GroundingSource(type: "url", url: uri, title: web.title ?? "")
+            }
+            if let rc = chunk.retrievedContext, let uri = rc.uri {
+                return GroundingSource(type: "retrieved-context", url: uri, title: rc.title ?? "")
+            }
+            if let img = chunk.image, let uri = img.uri {
+                return GroundingSource(type: "image", url: uri, title: img.title ?? "")
+            }
+            if let maps = chunk.maps, let uri = maps.uri {
+                return GroundingSource(type: "maps", url: uri, title: maps.title ?? "")
+            }
+            return nil
+        }
+        return results.isEmpty ? nil : results
+    }
+
     /// Usage token counts if a `data-usage` chunk was received.
     var usageTokens: UsageTokens? {
         dataParts.compactMap(\.usageTokens).first

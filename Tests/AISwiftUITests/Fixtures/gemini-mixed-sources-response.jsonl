@@ -1,0 +1,17 @@
+data: {"type":"start","messageId":"msg-mixed-sources-001"}
+
+data: {"type":"start-step"}
+
+data: {"type":"text-start","id":"text_1"}
+
+data: {"type":"text-delta","id":"text_1","delta":"Here are results from multiple source types."}
+
+data: {"type":"text-end","id":"text_1"}
+
+data: {"type":"finish-step"}
+
+data: {"type":"message-metadata","messageMetadata":{"google":{"groundingMetadata":{"groundingChunks":[{"web":{"uri":"https://swift.org","title":"Swift.org"}},{"retrievedContext":{"uri":"https://docs.example.com/swift","title":"Swift Docs"}},{"image":{"uri":"https://images.example.com/swift-logo.png","title":"Swift Logo"}},{"maps":{"uri":"https://maps.example.com/apple-hq","title":"Apple HQ"}}],"webSearchQueries":["Swift mixed sources"],"searchEntryPoint":{"renderedContent":"<html>search</html>"}},"safetyRatings":[{"category":"HARM_CATEGORY_DANGEROUS_CONTENT","probability":"NEGLIGIBLE","blocked":false},{"category":"HARM_CATEGORY_HATE_SPEECH","probability":"NEGLIGIBLE","blocked":false}],"urlContextMetadata":{"urlMetadata":[{"url":"https://swift.org","title":"Swift.org","snippet":"Swift is a general-purpose programming language."},{"url":"https://docs.example.com/swift","title":"Swift Docs","snippet":"Official Swift documentation."}]}}}}
+
+data: {"type":"finish","finishReason":"stop"}
+
+data: [DONE]

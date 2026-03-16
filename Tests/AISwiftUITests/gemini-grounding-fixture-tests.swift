@@ -18,7 +18,10 @@ struct GeminiGroundingFixtureTests {
     // MARK: 1 - Finish chunk with message-metadata attaches to UIMessage
 
     @Test func decodeGroundingMetadataFromFinishChunkStream() throws {
-        let line = #"data: {"type":"message-metadata","messageMetadata":{"google":{"groundingMetadata":{"webSearchQueries":["test query"]}}}}"#
+        let line = """
+            data: {"type":"message-metadata","messageMetadata":\
+            {"google":{"groundingMetadata":{"webSearchQueries":["test query"]}}}}
+            """
         let decoder = UIMessageChunkDecoder()
         let chunk = try decoder.decode(line)
         guard case .messageMetadata(let meta) = chunk else {

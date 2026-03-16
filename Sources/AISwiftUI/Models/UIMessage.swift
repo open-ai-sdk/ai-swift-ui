@@ -72,6 +72,31 @@ public extension UIMessage {
     /// Convenience alias for message-level metadata.
     var messageMetadataValue: [String: JSONValue]? { metadata }
 
+    /// Extracts typed Google grounding metadata from the message metadata dictionary.
+    var googleGroundingMetadata: GoogleGroundingMetadata? {
+        guard let meta = metadata,
+              case .object(let googleObj) = meta["google"],
+              case .object(let gmObj) = googleObj["groundingMetadata"] else {
+            return nil
+        }
+        let nsObj = JSONValue.object(gmObj).rawValue
+        guard let data = try? JSONSerialization.data(withJSONObject: nsObj) else { return nil }
+        return try? JSONDecoder().decode(GoogleGroundingMetadata.self, from: data)
+    }
+
+    /// Web search queries used for grounding.
+    var groundingSearchQueries: [String]? {
+        googleGroundingMetadata?.webSearchQueries
+    }
+
+    /// Grounded source URLs with titles.
+    var groundingSources: [(url: String, title: String)]? {
+        googleGroundingMetadata?.groundingChunks?.compactMap { chunk in
+            guard let web = chunk.web, let uri = web.uri else { return nil }
+            return (url: uri, title: web.title ?? "")
+        }
+    }
+
     /// Usage token counts if a `data-usage` chunk was received.
     var usageTokens: UsageTokens? {
         dataParts.compactMap(\.usageTokens).first

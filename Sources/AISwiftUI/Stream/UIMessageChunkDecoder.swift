@@ -52,7 +52,9 @@ public struct UIMessageChunkDecoder: Sendable {
         if type.hasPrefix("data-") {
             return try parseDataChunk(type: type, raw: raw)
         }
-        throw ChunkDecodingError.unknownChunkType(type)
+        // Unknown chunk types are silently skipped to keep the stream alive.
+        // The backend may emit new types that this SDK version doesn't handle yet.
+        return .data(name: "unknown-\(type)", payload: .null, isTransient: true, dataId: nil)
     }
 
     private func parseLifecycleChunk(type: String, raw: [String: Any]) -> UIMessageChunk? {

@@ -263,6 +263,9 @@ public final class ChatSession: Identifiable {
     }
 
     private func handleStreamError(_ streamError: any Error, assistantId: String) {
+        // Log the concrete error type and description for diagnostics.
+        let nsError = streamError as NSError
+        print("[ChatSession] Stream error: domain=\(nsError.domain) code=\(nsError.code) desc=\(nsError.localizedDescription) type=\(type(of: streamError))")
         if let idx = messages.firstIndex(where: { $0.id == assistantId }),
            messages[idx].primaryText.isEmpty,
            messages[idx].toolInvocations.isEmpty {

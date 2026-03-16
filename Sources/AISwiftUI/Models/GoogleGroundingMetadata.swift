@@ -1,5 +1,12 @@
 import Foundation
 
+/// A flattened grounding source from any chunk type.
+public struct GroundingSource: Sendable, Equatable {
+    public var type: String
+    public var url: String
+    public var title: String
+}
+
 /// Typed model for Google grounding metadata from Gemini search results.
 public struct GoogleGroundingMetadata: Codable, Sendable, Equatable {
     public var groundingChunks: [GroundingChunk]?

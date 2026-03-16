@@ -252,8 +252,14 @@ private func makeMixedSourcesMessage() -> UIMessage {
             "groundingMetadata": .object([
                 "groundingChunks": .array([
                     .object(["web": .object(["uri": .string("https://swift.org"), "title": .string("Swift.org")])]),
-                    .object(["retrievedContext": .object(["uri": .string("https://docs.example.com/swift"), "title": .string("Swift Docs")])]),
-                    .object(["image": .object(["uri": .string("https://images.example.com/swift-logo.png"), "title": .string("Swift Logo")])]),
+                    .object(["retrievedContext": .object([
+                        "uri": .string("https://docs.example.com/swift"),
+                        "title": .string("Swift Docs")
+                    ])]),
+                    .object(["image": .object([
+                        "uri": .string("https://images.example.com/swift-logo.png"),
+                        "title": .string("Swift Logo")
+                    ])]),
                     .object(["maps": .object(["uri": .string("https://maps.example.com/apple-hq"), "title": .string("Apple HQ")])])
                 ]),
                 "webSearchQueries": .array([.string("Swift mixed sources")])

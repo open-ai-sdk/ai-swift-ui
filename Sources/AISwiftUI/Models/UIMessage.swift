@@ -120,13 +120,21 @@ public extension UIMessage {
     }
 
     /// All grounding sources (web + retrieved-context + image + maps) as a flat list.
-    var allGroundingSources: [(type: String, url: String, title: String)]? {
+    var allGroundingSources: [GroundingSource]? {
         guard let chunks = googleGroundingMetadata?.groundingChunks else { return nil }
-        let results = chunks.compactMap { chunk -> (type: String, url: String, title: String)? in
-            if let web = chunk.web, let uri = web.uri { return ("url", uri, web.title ?? "") }
-            if let rc = chunk.retrievedContext, let uri = rc.uri { return ("retrieved-context", uri, rc.title ?? "") }
-            if let img = chunk.image, let uri = img.uri { return ("image", uri, img.title ?? "") }
-            if let maps = chunk.maps, let uri = maps.uri { return ("maps", uri, maps.title ?? "") }
+        let results: [GroundingSource] = chunks.compactMap { chunk in
+            if let web = chunk.web, let uri = web.uri {
+                return GroundingSource(type: "url", url: uri, title: web.title ?? "")
+            }
+            if let rc = chunk.retrievedContext, let uri = rc.uri {
+                return GroundingSource(type: "retrieved-context", url: uri, title: rc.title ?? "")
+            }
+            if let img = chunk.image, let uri = img.uri {
+                return GroundingSource(type: "image", url: uri, title: img.title ?? "")
+            }
+            if let maps = chunk.maps, let uri = maps.uri {
+                return GroundingSource(type: "maps", url: uri, title: maps.title ?? "")
+            }
             return nil
         }
         return results.isEmpty ? nil : results

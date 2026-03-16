@@ -5,10 +5,16 @@ public struct DataPart: Codable, Sendable, Equatable {
     public var name: String
     /// The decoded JSON payload.
     public var data: JSONValue
+    /// When `true`, this part is transient and should not be persisted to history.
+    public var isTransient: Bool
+    /// Optional identifier for reconciliation across updates.
+    public var id: String?
 
-    public init(name: String, data: JSONValue) {
+    public init(name: String, data: JSONValue, isTransient: Bool = false, id: String? = nil) {
         self.name = name
         self.data = data
+        self.isTransient = isTransient
+        self.id = id
     }
 }
 
@@ -32,6 +38,20 @@ public extension DataPart {
         guard name == "suggested-questions",
               case .object(let obj) = data,
               case .array(let arr) = obj["questions"] else { return nil }
+        return arr.compactMap(\.stringValue)
+    }
+
+    /// Research plan text from a `data-plan` chunk.
+    /// Returns non-nil only when `name == "plan"`.
+    var researchPlan: String? {
+        guard name == "plan" else { return nil }
+        return data.stringValue
+    }
+
+    /// Research steps list from a `data-steps` chunk.
+    /// Returns non-nil only when `name == "steps"` and payload is an array of strings.
+    var researchSteps: [String]? {
+        guard name == "steps", case .array(let arr) = data else { return nil }
         return arr.compactMap(\.stringValue)
     }
 }

@@ -46,6 +46,9 @@ public struct UIMessageChunkDecoder: Sendable {
         if let source = parseSourceChunk(type: type, raw: raw) {
             return source
         }
+        if let extended = try parseExtendedChunk(type: type, raw: raw) {
+            return extended
+        }
         if type.hasPrefix("data-") {
             return try parseDataChunk(type: type, raw: raw)
         }
@@ -57,7 +60,7 @@ public struct UIMessageChunkDecoder: Sendable {
         case "start": return .start(messageId: raw["messageId"] as? String ?? "")
         case "start-step": return .startStep
         case "finish-step": return .finishStep
-        case "finish": return .finish
+        case "finish": return .finish(finishReason: raw["finishReason"] as? String)
         case "error": return .error(text: raw["errorText"] as? String ?? "unknown error")
         default: return nil
         }
@@ -111,12 +114,51 @@ public struct UIMessageChunkDecoder: Sendable {
 
     private func parseDataChunk(type: String, raw: [String: Any]) throws -> UIMessageChunk {
         let name = String(type.dropFirst(5))
+        let isTransient = raw["transient"] as? Bool ?? false
+        let dataId = raw["id"] as? String
         guard let dataField = raw["data"] else {
-            return .data(name: name, payload: .null)
+            return .data(name: name, payload: .null, isTransient: isTransient, dataId: dataId)
         }
         let fieldData = try JSONSerialization.data(withJSONObject: dataField)
         let payload = try JSONDecoder().decode(JSONValue.self, from: fieldData)
-        return .data(name: name, payload: payload)
+        return .data(name: name, payload: payload, isTransient: isTransient, dataId: dataId)
+    }
+
+    private func parseExtendedChunk(type: String, raw: [String: Any]) throws -> UIMessageChunk? {
+        switch type {
+        case "message-metadata":
+            let metaRaw = raw["messageMetadata"] as? [String: Any] ?? [:]
+            var metadata: [String: JSONValue] = [:]
+            for (key, value) in metaRaw {
+                let wrapped = try JSONSerialization.data(withJSONObject: ["v": value])
+                if let obj = try JSONDecoder().decode([String: JSONValue].self, from: wrapped)["v"] {
+                    metadata[key] = obj
+                }
+            }
+            return .messageMetadata(metadata: metadata)
+        case "abort":
+            return .abort(reason: raw["reason"] as? String)
+        case "source-url":
+            return .sourceURL(
+                sourceId: raw["sourceId"] as? String ?? "",
+                url: raw["url"] as? String ?? "",
+                title: raw["title"] as? String ?? ""
+            )
+        case "source-document":
+            return .sourceDocument(
+                sourceId: raw["sourceId"] as? String ?? "",
+                mediaType: raw["mediaType"] as? String ?? "",
+                title: raw["title"] as? String ?? "",
+                filename: raw["filename"] as? String ?? ""
+            )
+        case "file":
+            return .file(
+                url: raw["url"] as? String ?? "",
+                mediaType: raw["mediaType"] as? String ?? ""
+            )
+        default:
+            return nil
+        }
     }
 
     private func decodeJSONValueField(_ key: String, from raw: [String: Any]) throws -> JSONValue {

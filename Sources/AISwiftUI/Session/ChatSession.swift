@@ -30,10 +30,17 @@ public final class ChatSession: Identifiable {
     /// The last error, if `status == .error`.
     public private(set) var error: (any Error)?
 
+    /// The finish reason from the last completed stream (e.g. "stop", "length").
+    public private(set) var finishReason: String?
+
+    /// Set to `true` when the last stream was aborted.
+    public private(set) var isAborted: Bool = false
+
     // MARK: - Callbacks
 
     /// Called when the assistant message is fully received.
-    public var onFinish: ((UIMessage) -> Void)?
+    /// Parameters: the finished message and optional finish reason.
+    public var onFinish: ((UIMessage, String?) -> Void)?
 
     /// Called when a stream error occurs.
     public var onError: ((any Error) -> Void)?
@@ -156,8 +163,16 @@ public final class ChatSession: Identifiable {
                         self.updateAssistantMessage(reducer.message, id: currentAssistantId)
 
                         // Fire onDataPart callback for data chunks
-                        if case .data(let name, let payload) = chunk {
+                        if case .data(let name, let payload, _, _) = chunk {
                             self.onDataPart?(name, payload.rawValue)
+                        }
+
+                        // Handle abort chunk
+                        if case .abort(let reason) = chunk {
+                            self.isAborted = true
+                            let abortError = AbortError(reason: reason)
+                            self.error = abortError
+                            self.onError?(abortError)
                         }
                     }
                 }
@@ -184,8 +199,10 @@ public final class ChatSession: Identifiable {
     }
 
     private func finalizeStream(assistantId: String, reducer: UIMessageStreamReducer) {
+        finishReason = reducer.finishReason
+        isAborted = reducer.isAborted
         if let idx = messages.firstIndex(where: { $0.id == assistantId }) {
-            onFinish?(messages[idx])
+            onFinish?(messages[idx], reducer.finishReason)
         }
         status = .ready
     }
@@ -201,4 +218,12 @@ public final class ChatSession: Identifiable {
         status = .error
         onError?(streamError)
     }
+}
+
+// MARK: - AbortError
+
+/// Emitted when an `abort` chunk is received from the server.
+public struct AbortError: Error, Sendable, CustomStringConvertible {
+    public let reason: String?
+    public var description: String { reason ?? "Stream aborted by server" }
 }

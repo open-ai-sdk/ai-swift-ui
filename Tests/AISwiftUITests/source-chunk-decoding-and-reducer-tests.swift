@@ -100,7 +100,7 @@ struct SourceChunkDecodingAndReducerTests {
             SourceURLPart(id: "s2", url: "https://b.com", title: "B"),
             SourceURLPart(id: "s3", url: "https://c.com", title: "C"),
         ]))
-        reducer.apply(.finish)
+        reducer.apply(.finish())
 
         #expect(reducer.message.sources.count == 3)
         #expect(reducer.isFinished)
@@ -140,7 +140,7 @@ struct SourceChunkDecodingAndReducerTests {
             .object(["id": .string("doc-1"), "title": .string("Go Spec")]),
             .object(["id": .string("doc-2"), "title": .string("Effective Go")]),
         ])))
-        reducer.apply(.finish)
+        reducer.apply(.finish())
 
         let docRefs = reducer.message.documentReferences
         #expect(docRefs.count == 2)
@@ -157,7 +157,7 @@ struct SourceChunkDecodingAndReducerTests {
         reducer.apply(.data(name: "document-references", payload: .array([
             .object(["id": .string("doc-1"), "title": .string("Internal Doc")]),
         ])))
-        reducer.apply(.finish)
+        reducer.apply(.finish())
 
         // sources() returns all source-type parts (sourceURL + sourceDocument)
         #expect(reducer.message.sources.count == 2)

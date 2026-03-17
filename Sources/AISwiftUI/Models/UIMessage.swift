@@ -120,23 +120,43 @@ public extension UIMessage {
     }
 
     /// All grounding sources (web + retrieved-context + image + maps) as a flat list.
+    /// Merges sources from Google grounding metadata AND explicit `source-url` stream chunks.
     var allGroundingSources: [GroundingSource]? {
-        guard let chunks = googleGroundingMetadata?.groundingChunks else { return nil }
-        let results: [GroundingSource] = chunks.compactMap { chunk in
-            if let web = chunk.web, let uri = web.uri {
-                return GroundingSource(type: "url", url: uri, title: web.title ?? "")
+        var results: [GroundingSource] = []
+        var seen = Set<String>()
+
+        // 1. Sources from Google grounding metadata (message-metadata chunk).
+        if let chunks = googleGroundingMetadata?.groundingChunks {
+            for chunk in chunks {
+                if let web = chunk.web, let uri = web.uri {
+                    if seen.insert(uri).inserted {
+                        results.append(GroundingSource(type: "url", url: uri, title: web.title ?? ""))
+                    }
+                } else if let rc = chunk.retrievedContext, let uri = rc.uri {
+                    if seen.insert(uri).inserted {
+                        results.append(GroundingSource(type: "retrieved-context", url: uri, title: rc.title ?? ""))
+                    }
+                } else if let img = chunk.image, let uri = img.uri {
+                    if seen.insert(uri).inserted {
+                        results.append(GroundingSource(type: "image", url: uri, title: img.title ?? ""))
+                    }
+                } else if let maps = chunk.maps, let uri = maps.uri {
+                    if seen.insert(uri).inserted {
+                        results.append(GroundingSource(type: "maps", url: uri, title: maps.title ?? ""))
+                    }
+                }
             }
-            if let rc = chunk.retrievedContext, let uri = rc.uri {
-                return GroundingSource(type: "retrieved-context", url: uri, title: rc.title ?? "")
-            }
-            if let img = chunk.image, let uri = img.uri {
-                return GroundingSource(type: "image", url: uri, title: img.title ?? "")
-            }
-            if let maps = chunk.maps, let uri = maps.uri {
-                return GroundingSource(type: "maps", url: uri, title: maps.title ?? "")
-            }
-            return nil
         }
+
+        // 2. Sources from explicit source-url stream chunks (native Gemini SSE path).
+        for part in parts {
+            if case .sourceURL(let src) = part, !src.url.isEmpty {
+                if seen.insert(src.url).inserted {
+                    results.append(GroundingSource(type: "url", url: src.url, title: src.title ?? ""))
+                }
+            }
+        }
+
         return results.isEmpty ? nil : results
     }
 

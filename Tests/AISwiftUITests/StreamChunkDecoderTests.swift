@@ -120,6 +120,59 @@ struct StreamChunkDecoderTests {
         #expect(text == "connection reset")
     }
 
+    // MARK: - Tool error/approval chunk types
+
+    @Test func decodesToolInputError() throws {
+        let json = #"data: {"type":"tool-input-error","toolCallId":"tc1","toolName":"search","input":{"q":"go"},"errorText":"invalid args"}"#
+        let chunk = try decoder.decode(json)
+        guard case .toolInputError(let tcId, let toolName, let input, let errorText) = chunk else {
+            Issue.record("Expected .toolInputError"); return
+        }
+        #expect(tcId == "tc1")
+        #expect(toolName == "search")
+        #expect(errorText == "invalid args")
+        if case .object(let obj) = input, case .string(let q) = obj["q"] {
+            #expect(q == "go")
+        } else {
+            Issue.record("Unexpected input shape")
+        }
+    }
+
+    @Test func decodesToolOutputError() throws {
+        let json = #"data: {"type":"tool-output-error","toolCallId":"tc2","errorText":"execution failed"}"#
+        let chunk = try decoder.decode(json)
+        guard case .toolOutputError(let tcId, let errorText) = chunk else {
+            Issue.record("Expected .toolOutputError"); return
+        }
+        #expect(tcId == "tc2")
+        #expect(errorText == "execution failed")
+    }
+
+    @Test func decodesToolOutputDenied() throws {
+        let json = #"data: {"type":"tool-output-denied","toolCallId":"tc3"}"#
+        let chunk = try decoder.decode(json)
+        guard case .toolOutputDenied(let tcId) = chunk else {
+            Issue.record("Expected .toolOutputDenied"); return
+        }
+        #expect(tcId == "tc3")
+    }
+
+    @Test func decodesToolApprovalRequest() throws {
+        let json = #"data: {"type":"tool-approval-request","approvalId":"ap1","toolCallId":"tc4","toolName":"delete","input":{"id":"x"}}"#
+        let chunk = try decoder.decode(json)
+        guard case .toolApprovalRequest(let approvalId, let tcId, let toolName, let input) = chunk else {
+            Issue.record("Expected .toolApprovalRequest"); return
+        }
+        #expect(approvalId == "ap1")
+        #expect(tcId == "tc4")
+        #expect(toolName == "delete")
+        if case .object(let obj) = input, case .string(let id) = obj["id"] {
+            #expect(id == "x")
+        } else {
+            Issue.record("Unexpected input shape")
+        }
+    }
+
     // MARK: - Golden fixture tests
 
     @Test func goldenTextOnly() throws {

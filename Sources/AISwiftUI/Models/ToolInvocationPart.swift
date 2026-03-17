@@ -10,6 +10,10 @@ public enum ToolState: String, Codable, Sendable, Equatable {
     case outputAvailable
     /// Tool execution resulted in an error.
     case outputError
+    /// Tool execution was denied by user or policy.
+    case outputDenied
+    /// Tool execution is pending approval.
+    case approvalRequested
 }
 
 /// A tool invocation content part of a UI message.
@@ -24,18 +28,26 @@ public struct ToolInvocationPart: Codable, Sendable, Equatable {
     public var input: JSONValue
     /// Tool output, present when `state` is `.outputAvailable` or `.outputError`.
     public var output: JSONValue?
+    /// Human-readable error description, present when `state` is `.outputError`.
+    public var errorText: String?
+    /// Approval request identifier, present when `state` is `.approvalRequested`.
+    public var approvalId: String?
 
     public init(
         toolCallId: String,
         toolName: String,
         state: ToolState,
         input: JSONValue,
-        output: JSONValue? = nil
+        output: JSONValue? = nil,
+        errorText: String? = nil,
+        approvalId: String? = nil
     ) {
         self.toolCallId = toolCallId
         self.toolName = toolName
         self.state = state
         self.input = input
         self.output = output
+        self.errorText = errorText
+        self.approvalId = approvalId
     }
 }

@@ -364,6 +364,94 @@ struct DataPartCodableTests {
     }
 }
 
+// MARK: - Tool error/approval reducer tests
+
+struct ReducerToolErrorApprovalTests {
+
+    @Test func toolInputErrorCreatesPartWithOutputErrorState() {
+        var reducer = UIMessageStreamReducer(messageId: "msg-tie")
+        reducer.apply(.toolInputError(
+            toolCallId: "tc1", toolName: "search",
+            input: .object(["q": .string("go")]), errorText: "invalid args"
+        ))
+        let invocations = reducer.message.toolInvocations
+        #expect(invocations.count == 1)
+        #expect(invocations[0].state == .outputError)
+        #expect(invocations[0].errorText == "invalid args")
+        #expect(invocations[0].toolName == "search")
+    }
+
+    @Test func toolInputErrorUpdatesExistingPart() {
+        var reducer = UIMessageStreamReducer(messageId: "msg-tie-update")
+        reducer.apply(.toolInputStart(toolCallId: "tc1", toolName: "search"))
+        reducer.apply(.toolInputError(
+            toolCallId: "tc1", toolName: "search",
+            input: .null, errorText: "schema mismatch"
+        ))
+        let invocations = reducer.message.toolInvocations
+        #expect(invocations.count == 1)
+        #expect(invocations[0].state == .outputError)
+        #expect(invocations[0].errorText == "schema mismatch")
+    }
+
+    @Test func toolOutputErrorSetsErrorStateOnExistingPart() {
+        var reducer = UIMessageStreamReducer(messageId: "msg-toe")
+        reducer.apply(.toolInputAvailable(toolCallId: "tc1", toolName: "calc", input: .null))
+        reducer.apply(.toolOutputError(toolCallId: "tc1", errorText: "execution failed"))
+        let invocations = reducer.message.toolInvocations
+        #expect(invocations.count == 1)
+        #expect(invocations[0].state == .outputError)
+        #expect(invocations[0].errorText == "execution failed")
+    }
+
+    @Test func toolOutputErrorIgnoresUnknownToolCallId() {
+        var reducer = UIMessageStreamReducer(messageId: "msg-toe-unknown")
+        reducer.apply(.toolOutputError(toolCallId: "unknown", errorText: "oops"))
+        #expect(reducer.message.toolInvocations.isEmpty)
+    }
+
+    @Test func toolOutputDeniedSetsOutputDeniedState() {
+        var reducer = UIMessageStreamReducer(messageId: "msg-tod")
+        reducer.apply(.toolInputAvailable(toolCallId: "tc1", toolName: "delete", input: .null))
+        reducer.apply(.toolOutputDenied(toolCallId: "tc1"))
+        let invocations = reducer.message.toolInvocations
+        #expect(invocations.count == 1)
+        #expect(invocations[0].state == .outputDenied)
+    }
+
+    @Test func toolOutputDeniedIgnoresUnknownToolCallId() {
+        var reducer = UIMessageStreamReducer(messageId: "msg-tod-unknown")
+        reducer.apply(.toolOutputDenied(toolCallId: "unknown"))
+        #expect(reducer.message.toolInvocations.isEmpty)
+    }
+
+    @Test func toolApprovalRequestCreatesPartWithApprovalRequestedState() {
+        var reducer = UIMessageStreamReducer(messageId: "msg-tar")
+        reducer.apply(.toolApprovalRequest(
+            approvalId: "ap1", toolCallId: "tc1",
+            toolName: "delete", input: .object(["id": .string("x")])
+        ))
+        let invocations = reducer.message.toolInvocations
+        #expect(invocations.count == 1)
+        #expect(invocations[0].state == .approvalRequested)
+        #expect(invocations[0].approvalId == "ap1")
+        #expect(invocations[0].toolName == "delete")
+    }
+
+    @Test func toolApprovalRequestUpdatesExistingPart() {
+        var reducer = UIMessageStreamReducer(messageId: "msg-tar-update")
+        reducer.apply(.toolInputAvailable(toolCallId: "tc1", toolName: "delete", input: .null))
+        reducer.apply(.toolApprovalRequest(
+            approvalId: "ap2", toolCallId: "tc1",
+            toolName: "delete", input: .null
+        ))
+        let invocations = reducer.message.toolInvocations
+        #expect(invocations.count == 1)
+        #expect(invocations[0].state == .approvalRequested)
+        #expect(invocations[0].approvalId == "ap2")
+    }
+}
+
 // MARK: - UIMessage Codable with metadata
 
 struct UIMessageMetadataCodableTests {

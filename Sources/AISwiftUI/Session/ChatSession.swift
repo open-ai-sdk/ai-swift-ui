@@ -162,7 +162,10 @@ public final class ChatSession: Identifiable {
 
     func streamAssistant(assistantId: String, options: ChatRequestOptions?, toolIteration: Int) async {
         toolIterationCount = toolIteration
-        let request = TransportSendRequest(id: id, messages: messages, options: options)
+        // Send history WITHOUT the trailing empty assistant placeholder (matches AI SDK Node behavior).
+        // The placeholder remains in self.messages for optimistic UI rendering.
+        let outgoingMessages = Array(messages.dropLast())
+        let request = TransportSendRequest(id: id, messages: outgoingMessages, options: options)
         var reducer = UIMessageStreamReducer(messageId: assistantId)
         var currentAssistantId = assistantId
         // Cache the assistant message index to avoid O(n) scan per chunk

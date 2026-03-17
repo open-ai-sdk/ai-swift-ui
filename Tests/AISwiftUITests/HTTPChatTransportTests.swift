@@ -116,8 +116,8 @@ struct HTTPTransportRequestBuildingTests {
             apiURL: URL(string: "https://example.com/chat")!
         )
         let options = ChatRequestOptions(
-            body: ["modelId": "gpt-4o"],
-            metadata: ["threadId": "thread-123"]
+            body: ["modelId": .string("gpt-4o")],
+            metadata: ["threadId": .string("thread-123")]
         )
         let request = TransportSendRequest(id: "sess-merge", messages: [], options: options)
         let urlReq = try transport.buildURLRequest(for: request)
@@ -132,6 +132,109 @@ struct HTTPTransportRequestBuildingTests {
         #expect(bodyObj?["modelId"] as? String == "gpt-4o")
         let metadata = parsed["metadata"] as? [String: Any]
         #expect(metadata?["threadId"] as? String == "thread-123")
+    }
+}
+
+// MARK: - prepareSendRequest hook tests (sb-31j.3)
+
+struct PrepareSendRequestHookTests {
+
+    @Test func hookCanModifyBody() async throws {
+        let transport = HTTPChatTransport(
+            apiURL: URL(string: "https://example.com/chat")!,
+            prepareSendRequest: { prepared in
+                var p = prepared
+                p.body["injected"] = .string("by-hook")
+                return p
+            }
+        )
+        let request = TransportSendRequest(id: "s1", messages: [])
+        let urlReq = try await transport.buildURLRequestAsync(for: request)
+
+        guard let body = urlReq.httpBody,
+              let parsed = try? JSONSerialization.jsonObject(with: body) as? [String: Any] else {
+            Issue.record("Expected JSON body"); return
+        }
+        let bodyObj = parsed["body"] as? [String: Any]
+        #expect(bodyObj?["injected"] as? String == "by-hook")
+    }
+
+    @Test func hookCanFilterMessages() async throws {
+        let messages = [
+            UIMessage(id: "u1", role: .user, parts: [.text(TextPart(text: "Old"))]),
+            UIMessage(id: "a1", role: .assistant, parts: [.text(TextPart(text: "Old answer"))]),
+            UIMessage(id: "u2", role: .user, parts: [.text(TextPart(text: "New"))]),
+        ]
+        let transport = HTTPChatTransport(
+            apiURL: URL(string: "https://example.com/chat")!,
+            prepareSendRequest: { prepared in
+                var p = prepared
+                // Keep only the last message
+                p.messages = Array(prepared.messages.suffix(1))
+                return p
+            }
+        )
+        let request = TransportSendRequest(id: "s2", messages: messages)
+        let urlReq = try await transport.buildURLRequestAsync(for: request)
+
+        guard let body = urlReq.httpBody,
+              let parsed = try? JSONSerialization.jsonObject(with: body) as? [String: Any] else {
+            Issue.record("Expected JSON body"); return
+        }
+        let sentMessages = parsed["messages"] as? [[String: Any]]
+        #expect(sentMessages?.count == 1)
+        #expect(sentMessages?[0]["role"] as? String == "user")
+    }
+
+    @Test func hookCanChangeURL() async throws {
+        let alternateURL = URL(string: "https://other.example.com/v2/chat")!
+        let transport = HTTPChatTransport(
+            apiURL: URL(string: "https://example.com/chat")!,
+            prepareSendRequest: { prepared in
+                var p = prepared
+                p.api = alternateURL
+                return p
+            }
+        )
+        let request = TransportSendRequest(id: "s3", messages: [])
+        let urlReq = try await transport.buildURLRequestAsync(for: request)
+
+        #expect(urlReq.url == alternateURL)
+    }
+
+    @Test func hookAndRequestBuilderCompose() async throws {
+        // Hook sets body value; requestBuilder adds custom header — both must appear in final request
+        let transport = HTTPChatTransport(
+            apiURL: URL(string: "https://example.com/chat")!,
+            prepareSendRequest: { prepared in
+                var p = prepared
+                p.body["fromHook"] = .string("yes")
+                return p
+            },
+            requestBuilder: { req, urlReq in
+                var modified = urlReq
+                modified.setValue("builder-value", forHTTPHeaderField: "X-From-Builder")
+                // Re-encode body including hook changes via options.body
+                var envelope: [String: Any] = ["id": req.id, "messages": []]
+                if let body = req.options?.body, !body.isEmpty {
+                    envelope["body"] = body.mapValues { $0.rawValue }
+                }
+                modified.httpBody = try JSONSerialization.data(withJSONObject: envelope)
+                return modified
+            }
+        )
+        let options = ChatRequestOptions(body: ["fromHook": .string("yes")])
+        let request = TransportSendRequest(id: "s4", messages: [], options: options)
+        let urlReq = try await transport.buildURLRequestAsync(for: request)
+
+        #expect(urlReq.value(forHTTPHeaderField: "X-From-Builder") == "builder-value")
+        if let body = urlReq.httpBody,
+           let parsed = try? JSONSerialization.jsonObject(with: body) as? [String: Any] {
+            let bodyObj = parsed["body"] as? [String: Any]
+            #expect(bodyObj?["fromHook"] as? String == "yes")
+        } else {
+            Issue.record("Expected JSON body with fromHook")
+        }
     }
 }
 

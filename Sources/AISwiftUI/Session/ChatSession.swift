@@ -263,12 +263,11 @@ public final class ChatSession: Identifiable {
             $0.state == .inputAvailable && !prev.contains($0.toolCallId)
         }
         guard !newlyReady.isEmpty else { return }
+        let options = context.options
         Task {
             for tip in newlyReady {
                 if let result = await self.onToolCall?(tip) {
-                    await self.addToolResult(
-                        toolCallId: tip.toolCallId, output: result, options: context.options
-                    )
+                    await self.addToolResult(toolCallId: tip.toolCallId, output: result, options: options)
                 }
             }
         }

@@ -123,7 +123,8 @@ struct StreamChunkDecoderTests {
     // MARK: - Tool error/approval chunk types
 
     @Test func decodesToolInputError() throws {
-        let json = #"data: {"type":"tool-input-error","toolCallId":"tc1","toolName":"search","input":{"q":"go"},"errorText":"invalid args"}"#
+        let json = "data: " +
+            #"{"type":"tool-input-error","toolCallId":"tc1","toolName":"search","input":{"q":"go"},"errorText":"invalid args"}"#
         let chunk = try decoder.decode(json)
         guard case .toolInputError(let tcId, let toolName, let input, let errorText) = chunk else {
             Issue.record("Expected .toolInputError"); return

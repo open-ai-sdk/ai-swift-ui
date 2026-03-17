@@ -198,7 +198,11 @@ struct TransportRequestBodyContractTests {
         #expect(fileParts[0]["name"] as? String == "notes.pdf")
     }
 
-    // MARK: - FilePart encoding modes
+}
+
+// MARK: - FilePart encoding modes
+
+struct FilePartEncodingTests {
 
     @Test func encodesFilePartWithFileId() throws {
         let transport = HTTPChatTransport(apiURL: URL(string: "https://api.example.com/chat")!)
@@ -310,10 +314,11 @@ struct TransportRequestBodyContractTests {
         #expect(fileParts[0]["data"] as? String == Data([0x01, 0x02]).base64EncodedString())
         #expect(fileParts[0]["url"] == nil, "url must be absent when data wins")
     }
+}
 
-    // MARK: - requestBuilder override
+// MARK: - JSONValue body encoding (sb-31j.2)
 
-    // MARK: - JSONValue body encoding (sb-31j.2)
+struct JSONValueBodyEncodingTests {
 
     @Test func bodyWithNestedJSONValueEncodesWithoutCrash() throws {
         let transport = HTTPChatTransport(apiURL: URL(string: "https://api.example.com/chat")!)
@@ -373,8 +378,11 @@ struct TransportRequestBodyContractTests {
         // NSNull is present for null values
         #expect(bodyObj?["nullField"] is NSNull)
     }
+}
 
-    // MARK: - requestBuilder override
+// MARK: - requestBuilder override
+
+struct RequestBuilderOverrideTests {
 
     @Test func requestBuilderCanProduceSecondBrainStyleEnvelope() throws {
         // Simulates how second-brain-app would override the request to add attachments

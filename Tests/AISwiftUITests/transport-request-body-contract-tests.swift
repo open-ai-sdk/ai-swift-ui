@@ -197,7 +197,6 @@ struct TransportRequestBodyContractTests {
         #expect(fileParts[0]["mediaType"] as? String == "application/pdf")
         #expect(fileParts[0]["name"] as? String == "notes.pdf")
     }
-
 }
 
 // MARK: - FilePart encoding modes

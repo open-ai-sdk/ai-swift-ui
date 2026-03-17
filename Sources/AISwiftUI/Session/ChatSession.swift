@@ -162,11 +162,18 @@ public final class ChatSession: Identifiable {
 
     func streamAssistant(assistantId: String, options: ChatRequestOptions?, toolIteration: Int) async {
         toolIterationCount = toolIteration
-        let request = TransportSendRequest(id: id, messages: messages, options: options)
-        var reducer = UIMessageStreamReducer(messageId: assistantId)
-        var currentAssistantId = assistantId
+        // Send history WITHOUT the trailing empty assistant placeholder (matches AI SDK Node behavior).
+        // The placeholder remains in self.messages for optimistic UI rendering.
+        let outgoingMessages = Array(messages.dropLast())
+        let request = TransportSendRequest(id: id, messages: outgoingMessages, options: options)
         // Cache the assistant message index to avoid O(n) scan per chunk
-        let assistantIdx = messages.count - 1
+        var context = ChunkApplyContext(
+            reducer: UIMessageStreamReducer(messageId: assistantId),
+            currentAssistantId: assistantId,
+            assistantIdx: messages.count - 1,
+            shouldTrackTools: onToolCall != nil && toolIteration < ChatSession.maxToolIterations,
+            options: options
+        )
 
         let task = Task { [weak self] in
             guard let self else { return }
@@ -179,78 +186,91 @@ public final class ChatSession: Identifiable {
                 } else {
                     stream = rawStream
                 }
-                let shouldTrackTools = self.onToolCall != nil && toolIteration < ChatSession.maxToolIterations
                 for try await chunk in stream {
                     if Task.isCancelled { break }
-                    await MainActor.run {
-                        if case .start(let serverId, _) = chunk {
-                            if assistantIdx < self.messages.count, self.messages[assistantIdx].id == currentAssistantId {
-                                let old = self.messages[assistantIdx]
-                                self.messages[assistantIdx] = UIMessage(
-                                    id: serverId, role: old.role,
-                                    parts: old.parts, createdAt: old.createdAt
-                                )
-                            }
-                            currentAssistantId = serverId
-                            reducer = UIMessageStreamReducer(messageId: serverId)
-                        }
-
-                        // Snapshot tool state only when tracking tools (avoids hot-path alloc)
-                        let prevInputAvailable: Set<String>?
-                        if shouldTrackTools {
-                            prevInputAvailable = Set(
-                                reducer.message.toolInvocations
-                                    .filter { $0.state == .inputAvailable }
-                                    .map { $0.toolCallId }
-                            )
-                        } else {
-                            prevInputAvailable = nil
-                        }
-
-                        reducer.apply(chunk)
-                        // Direct index update instead of linear scan
-                        if assistantIdx < self.messages.count {
-                            self.messages[assistantIdx] = reducer.message
-                        }
-
-                        if case .data(let name, let payload, _, _) = chunk {
-                            self.onDataPart?(name, payload.rawValue)
-                        }
-                        if case .abort(let reason) = chunk {
-                            self.isAborted = true
-                            let err = AbortError(reason: reason)
-                            self.error = err
-                            self.onError?(err)
-                        }
-
-                        // Fire onToolCall for newly inputAvailable parts
-                        guard let prev = prevInputAvailable else { return }
-                        let newlyReady = reducer.message.toolInvocations.filter {
-                            $0.state == .inputAvailable && !prev.contains($0.toolCallId)
-                        }
-                        guard !newlyReady.isEmpty else { return }
-                        Task {
-                            for tip in newlyReady {
-                                if let result = await self.onToolCall?(tip) {
-                                    await self.addToolResult(toolCallId: tip.toolCallId, output: result, options: options)
-                                }
-                            }
-                        }
-                    }
+                    await MainActor.run { self.applyChunk(chunk, context: &context) }
                 }
                 await MainActor.run {
                     if !Task.isCancelled {
-                        self.finalizeStream(assistantId: currentAssistantId, reducer: reducer)
+                        self.finalizeStream(
+                            assistantId: context.currentAssistantId, reducer: context.reducer
+                        )
                     }
                 }
             } catch {
-                await MainActor.run { self.handleStreamError(error, assistantId: currentAssistantId) }
+                await MainActor.run {
+                    self.handleStreamError(error, assistantId: context.currentAssistantId)
+                }
             }
         }
 
         streamTask = task
         await task.value
         streamTask = nil
+    }
+
+    private struct ChunkApplyContext {
+        var reducer: UIMessageStreamReducer
+        var currentAssistantId: String
+        let assistantIdx: Int
+        let shouldTrackTools: Bool
+        let options: ChatRequestOptions?
+    }
+
+    private func applyChunk(_ chunk: UIMessageChunk, context: inout ChunkApplyContext) {
+        if case .start(let serverId, _) = chunk {
+            if context.assistantIdx < messages.count,
+               messages[context.assistantIdx].id == context.currentAssistantId {
+                let old = messages[context.assistantIdx]
+                messages[context.assistantIdx] = UIMessage(
+                    id: serverId, role: old.role,
+                    parts: old.parts, createdAt: old.createdAt
+                )
+            }
+            context.currentAssistantId = serverId
+            context.reducer = UIMessageStreamReducer(messageId: serverId)
+        }
+
+        // Snapshot tool state only when tracking tools (avoids hot-path alloc)
+        let prevInputAvailable: Set<String>?
+        if context.shouldTrackTools {
+            prevInputAvailable = Set(
+                context.reducer.message.toolInvocations
+                    .filter { $0.state == .inputAvailable }
+                    .map { $0.toolCallId }
+            )
+        } else {
+            prevInputAvailable = nil
+        }
+
+        context.reducer.apply(chunk)
+        if context.assistantIdx < messages.count {
+            messages[context.assistantIdx] = context.reducer.message
+        }
+
+        if case .data(let name, let payload, _, _) = chunk {
+            onDataPart?(name, payload.rawValue)
+        }
+        if case .abort(let reason) = chunk {
+            isAborted = true
+            let err = AbortError(reason: reason)
+            error = err
+            onError?(err)
+        }
+
+        guard let prev = prevInputAvailable else { return }
+        let newlyReady = context.reducer.message.toolInvocations.filter {
+            $0.state == .inputAvailable && !prev.contains($0.toolCallId)
+        }
+        guard !newlyReady.isEmpty else { return }
+        let options = context.options
+        Task {
+            for tip in newlyReady {
+                if let result = await self.onToolCall?(tip) {
+                    await self.addToolResult(toolCallId: tip.toolCallId, output: result, options: options)
+                }
+            }
+        }
     }
 
     private func finalizeStream(assistantId: String, reducer: UIMessageStreamReducer) {

@@ -12,7 +12,7 @@ struct TransportRequestBodyContractTests {
         let transport = HTTPChatTransport(
             apiURL: URL(string: "https://api.example.com/chat")!
         )
-        let options = ChatRequestOptions(body: ["modelId": "gemini-2.0-flash", "agentId": "chat"])
+        let options = ChatRequestOptions(body: ["modelId": .string("gemini-2.0-flash"), "agentId": .string("chat")])
         let request = TransportSendRequest(id: "thread-abc", messages: [], options: options)
         let urlReq = try transport.buildURLRequest(for: request)
 
@@ -54,7 +54,7 @@ struct TransportRequestBodyContractTests {
             apiURL: URL(string: "https://api.example.com/chat")!
         )
         let options = ChatRequestOptions(
-            metadata: ["threadId": "thread-xyz", "userId": "user-123"]
+            metadata: ["threadId": .string("thread-xyz"), "userId": .string("user-123")]
         )
         let request = TransportSendRequest(id: "sess-meta", messages: [], options: options)
         let urlReq = try transport.buildURLRequest(for: request)
@@ -76,14 +76,14 @@ struct TransportRequestBodyContractTests {
         )
         let options = ChatRequestOptions(
             body: [
-                "modelId": "gemini-2.0-flash",
-                "agentId": "chat",
-                "runId": "run-uuid-here",
-                "maxSteps": 5,
+                "modelId": .string("gemini-2.0-flash"),
+                "agentId": .string("chat"),
+                "runId": .string("run-uuid-here"),
+                "maxSteps": .int(5),
             ],
             metadata: [
-                "threadId": "thread-abc",
-                "userId": "user-uuid",
+                "threadId": .string("thread-abc"),
+                "userId": .string("user-uuid"),
             ]
         )
         let userMsg = UIMessage(id: "u1", role: .user, parts: [.text(TextPart(text: "What is Go?"))])
@@ -197,8 +197,11 @@ struct TransportRequestBodyContractTests {
         #expect(fileParts[0]["mediaType"] as? String == "application/pdf")
         #expect(fileParts[0]["name"] as? String == "notes.pdf")
     }
+}
 
-    // MARK: - FilePart encoding modes
+// MARK: - FilePart encoding modes
+
+struct FilePartEncodingTests {
 
     @Test func encodesFilePartWithFileId() throws {
         let transport = HTTPChatTransport(apiURL: URL(string: "https://api.example.com/chat")!)
@@ -310,8 +313,75 @@ struct TransportRequestBodyContractTests {
         #expect(fileParts[0]["data"] as? String == Data([0x01, 0x02]).base64EncodedString())
         #expect(fileParts[0]["url"] == nil, "url must be absent when data wins")
     }
+}
 
-    // MARK: - requestBuilder override
+// MARK: - JSONValue body encoding (sb-31j.2)
+
+struct JSONValueBodyEncodingTests {
+
+    @Test func bodyWithNestedJSONValueEncodesWithoutCrash() throws {
+        let transport = HTTPChatTransport(apiURL: URL(string: "https://api.example.com/chat")!)
+        let options = ChatRequestOptions(body: [
+            "config": .object(["nested": .array([.int(1), .string("two"), .null])]),
+            "flag": .bool(true),
+        ])
+        let request = TransportSendRequest(id: "s1", messages: [], options: options)
+        let urlReq = try transport.buildURLRequest(for: request)
+
+        guard let bodyData = urlReq.httpBody,
+              let parsed = try? JSONSerialization.jsonObject(with: bodyData) as? [String: Any] else {
+            Issue.record("Expected JSON body"); return
+        }
+
+        let bodyObj = parsed["body"] as? [String: Any]
+        #expect(bodyObj?["flag"] as? Bool == true)
+        let config = bodyObj?["config"] as? [String: Any]
+        let nested = config?["nested"] as? [Any]
+        #expect(nested?.count == 3)
+    }
+
+    @Test func metadataWithJSONValueEncodesCorrectly() throws {
+        let transport = HTTPChatTransport(apiURL: URL(string: "https://api.example.com/chat")!)
+        let options = ChatRequestOptions(
+            metadata: [
+                "count": .int(42),
+                "enabled": .bool(false),
+                "score": .double(3.14),
+            ]
+        )
+        let request = TransportSendRequest(id: "s-meta", messages: [], options: options)
+        let urlReq = try transport.buildURLRequest(for: request)
+
+        guard let bodyData = urlReq.httpBody,
+              let parsed = try? JSONSerialization.jsonObject(with: bodyData) as? [String: Any] else {
+            Issue.record("Expected JSON body"); return
+        }
+
+        let metadata = parsed["metadata"] as? [String: Any]
+        #expect(metadata?["count"] as? Int == 42)
+        #expect(metadata?["enabled"] as? Bool == false)
+    }
+
+    @Test func nullJSONValueEncodesInBody() throws {
+        let transport = HTTPChatTransport(apiURL: URL(string: "https://api.example.com/chat")!)
+        let options = ChatRequestOptions(body: ["nullField": .null])
+        let request = TransportSendRequest(id: "s-null", messages: [], options: options)
+        let urlReq = try transport.buildURLRequest(for: request)
+
+        guard let bodyData = urlReq.httpBody,
+              let parsed = try? JSONSerialization.jsonObject(with: bodyData) as? [String: Any] else {
+            Issue.record("Expected JSON body"); return
+        }
+
+        let bodyObj = parsed["body"] as? [String: Any]
+        // NSNull is present for null values
+        #expect(bodyObj?["nullField"] is NSNull)
+    }
+}
+
+// MARK: - requestBuilder override
+
+struct RequestBuilderOverrideTests {
 
     @Test func requestBuilderCanProduceSecondBrainStyleEnvelope() throws {
         // Simulates how second-brain-app would override the request to add attachments
@@ -324,13 +394,8 @@ struct TransportRequestBodyContractTests {
                     "messages": req.messages.map { ["role": $0.role.rawValue, "content": $0.primaryText] },
                 ]
                 if let body = req.options?.body, !body.isEmpty {
-                    envelope["body"] = body
-                }
-                // Attach second-brain-style attachments from body extras
-                if let attachments = req.options?.body["attachments"] {
-                    var bodyObj = envelope["body"] as? [String: Any] ?? [:]
-                    bodyObj["attachments"] = attachments
-                    envelope["body"] = bodyObj
+                    // Convert [String: JSONValue] → [String: Any] for JSONSerialization
+                    envelope["body"] = body.mapValues { $0.rawValue }
                 }
                 modified.httpBody = try JSONSerialization.data(withJSONObject: envelope)
                 return modified
@@ -338,8 +403,8 @@ struct TransportRequestBodyContractTests {
         )
 
         let options = ChatRequestOptions(body: [
-            "modelId": "gemini-2.0-flash",
-            "agentId": "chat",
+            "modelId": .string("gemini-2.0-flash"),
+            "agentId": .string("chat"),
         ])
         let request = TransportSendRequest(
             id: "thread-second-brain",

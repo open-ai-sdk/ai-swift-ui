@@ -231,6 +231,83 @@ struct ChatSessionTests {
     }
 }
 
+// MARK: - Outgoing history regression tests (sb-31j.1)
+
+@MainActor
+struct OutgoingHistoryRegressionTests {
+
+    @Test func transportReceivesMessagesWithoutAssistantPlaceholder() async {
+        let transport = CapturingMockTransport(chunks: makeTextChunks(msgId: "msg-1", text: "Hi back"))
+        let session = ChatSession(id: "s1", transport: transport)
+        await session.send(.user(text: "Hello"))
+
+        let sent = transport.capturedRequests[0].messages
+        // Transport must receive only the user message, NOT the empty assistant placeholder
+        #expect(sent.count == 1)
+        #expect(sent[0].role == .user)
+        // But session.messages should have both user + populated assistant
+        #expect(session.messages.count == 2)
+        #expect(session.messages[1].role == .assistant)
+    }
+
+    @Test func regenerateDoesNotSendAssistantPlaceholder() async {
+        // Setup: session with existing user + assistant messages
+        let transport1 = CapturingMockTransport(chunks: makeTextChunks(msgId: "a1", text: "First"))
+        let session = ChatSession(id: "s2", transport: transport1)
+        await session.send(.user(text: "Q1"))
+        #expect(session.messages.count == 2)
+
+        // Regenerate using a fresh capturing transport
+        let transport2 = CapturingMockTransport(chunks: makeTextChunks(msgId: "a2", text: "Regen"))
+        let session2 = ChatSession(id: "s2", transport: transport2, messages: session.messages)
+        await session2.regenerate()
+
+        let sent = transport2.capturedRequests[0].messages
+        // Should only contain the user message (no trailing assistant placeholder)
+        #expect(sent.count == 1)
+        #expect(sent[0].role == .user)
+        #expect(session2.messages.count == 2)
+    }
+
+    @Test func fullSendCycleAfterAllFixes() async {
+        let transport = CapturingMockTransport(chunks: makeTextChunks(msgId: "e2e-1", text: "Done"))
+        let session = ChatSession(id: "e2e", transport: transport)
+        await session.send(.user(text: "Test"))
+
+        // Transport got clean history (1 user message)
+        #expect(transport.capturedRequests.count == 1)
+        #expect(transport.capturedRequests[0].messages.count == 1)
+        #expect(transport.capturedRequests[0].messages[0].role == .user)
+        // Session has user + populated assistant
+        #expect(session.messages.count == 2)
+        #expect(session.messages[1].primaryText == "Done")
+        #expect(session.status == .ready)
+    }
+}
+
+// MARK: - CapturingMockTransport
+
+final class CapturingMockTransport: ChatTransport, @unchecked Sendable {
+    let chunks: [UIMessageChunk]
+    private(set) var capturedRequests: [TransportSendRequest] = []
+    private let lock = NSLock()
+
+    init(chunks: [UIMessageChunk]) {
+        self.chunks = chunks
+    }
+
+    func send(_ request: TransportSendRequest) -> AsyncThrowingStream<UIMessageChunk, any Error> {
+        lock.lock()
+        capturedRequests.append(request)
+        lock.unlock()
+        let chunks = self.chunks
+        return AsyncThrowingStream { continuation in
+            for chunk in chunks { continuation.yield(chunk) }
+            continuation.finish()
+        }
+    }
+}
+
 // MARK: - SlowMockTransport for cancellation tests
 
 private struct SlowMockTransport: ChatTransport, Sendable {

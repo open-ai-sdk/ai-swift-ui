@@ -5,11 +5,12 @@ import Foundation
 /// The transport is configurable via:
 /// - `apiURL`: the endpoint to POST to
 /// - `headers`: a closure returning static or dynamic headers (e.g. auth tokens)
+/// - `prepareSendRequest`: optional async hook to customize messages, body, headers, and URL
 /// - `requestBuilder`: optional closure to fully customize the `URLRequest` before sending
 ///
 /// By default the transport encodes the request body as the canonical
-/// `ChatRequestEnvelope`-shaped JSON. Supply a `requestBuilder` to reshape
-/// the body for app-specific backends.
+/// `ChatRequestEnvelope`-shaped JSON using `JSONEncoder`. Supply a `requestBuilder` to
+/// reshape the body for app-specific backends.
 public final class HTTPChatTransport: ChatTransport, @unchecked Sendable {
 
     /// The API endpoint URL.
@@ -18,8 +19,12 @@ public final class HTTPChatTransport: ChatTransport, @unchecked Sendable {
     /// Returns headers to attach to every request (e.g. Authorization).
     public var headers: @Sendable () -> [String: String]
 
+    /// Optional async hook to customize messages, body, headers, and URL before the request fires.
+    /// Runs before `requestBuilder`. Return a modified `PreparedSendRequest`.
+    public var prepareSendRequest: (@Sendable (PreparedSendRequest) async throws -> PreparedSendRequest)?
+
     /// Optional hook to fully customize the `URLRequest` before it is sent.
-    /// Return the modified request. Returning `nil` uses the default encoding.
+    /// Return the modified request. Runs after `prepareSendRequest`.
     public var requestBuilder: (@Sendable (TransportSendRequest, URLRequest) throws -> URLRequest)?
 
     /// Optional token provider for injecting `Authorization: Bearer <token>` headers.
@@ -32,11 +37,13 @@ public final class HTTPChatTransport: ChatTransport, @unchecked Sendable {
         apiURL: URL,
         tokenProvider: (any TokenProvider)? = nil,
         headers: @escaping @Sendable () -> [String: String] = { [:] },
+        prepareSendRequest: (@Sendable (PreparedSendRequest) async throws -> PreparedSendRequest)? = nil,
         requestBuilder: (@Sendable (TransportSendRequest, URLRequest) throws -> URLRequest)? = nil,
         session: URLSession = .shared
     ) {
         self.apiURL = apiURL
         self.headers = headers
+        self.prepareSendRequest = prepareSendRequest
         self.requestBuilder = requestBuilder
         self.session = session
         self.tokenProvider = tokenProvider
@@ -72,10 +79,47 @@ public final class HTTPChatTransport: ChatTransport, @unchecked Sendable {
     // MARK: - Internal helpers (accessible via @testable import)
 
     func buildURLRequestAsync(for request: TransportSendRequest) async throws -> URLRequest {
-        var urlRequest = try buildURLRequest(for: request)
+        // 1. Build PreparedSendRequest from TransportSendRequest + transport defaults
+        var prepared = PreparedSendRequest(
+            api: apiURL,
+            chatId: request.id,
+            messages: request.messages,
+            body: request.options?.body ?? [:],
+            headers: headers()
+        )
+        // Merge per-request headers
+        if let perRequest = request.options?.headers {
+            for (key, value) in perRequest {
+                prepared.headers[key] = value
+            }
+        }
+
+        // 2. Run prepareSendRequest hook if set (async, so only in async path)
+        if let hook = prepareSendRequest {
+            prepared = try await hook(prepared)
+        }
+
+        // 3. Build URLRequest from PreparedSendRequest
+        var urlRequest = URLRequest(url: prepared.api)
+        urlRequest.httpMethod = "POST"
+        urlRequest.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        urlRequest.setValue("text/event-stream", forHTTPHeaderField: "Accept")
+        for (key, value) in prepared.headers {
+            urlRequest.setValue(value, forHTTPHeaderField: key)
+        }
+
+        // 4. Apply token provider
         if let provider = tokenProvider, let token = try await provider.accessToken() {
             urlRequest.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
         }
+
+        // 5. requestBuilder escape hatch (URLRequest-level customization)
+        if let customBuilder = requestBuilder {
+            return try customBuilder(request, urlRequest)
+        }
+
+        // 6. Default body encoding via JSONEncoder + Codable envelope
+        urlRequest.httpBody = try encodeBody(prepared: prepared, request: request)
         return urlRequest
     }
 
@@ -101,62 +145,64 @@ public final class HTTPChatTransport: ChatTransport, @unchecked Sendable {
             return try customBuilder(request, urlRequest)
         }
 
-        // Default body encoding: canonical envelope shape
+        // Default body encoding: canonical envelope shape via JSONEncoder
         urlRequest.httpBody = try encodeDefaultBody(for: request)
         return urlRequest
     }
 
+    // MARK: - Body encoding
+
+    private func encodeBody(prepared: PreparedSendRequest, request: TransportSendRequest) throws -> Data {
+        let envelope = ChatRequestEnvelope(
+            id: prepared.chatId,
+            messages: prepared.messages.map { makeEncodableMessage($0) },
+            body: prepared.body.isEmpty ? nil : prepared.body,
+            metadata: request.options?.metadata.isEmpty == false ? request.options?.metadata : nil
+        )
+        return try JSONEncoder().encode(envelope)
+    }
+
     private func encodeDefaultBody(for request: TransportSendRequest) throws -> Data {
-        var envelope: [String: Any] = [
-            "id": request.id,
-            "messages": request.messages.map { encodeMessage($0) },
-        ]
-        // Contract §1: model/route hints go under the "body" key, not at the root.
-        if let bodyExtra = request.options?.body, !bodyExtra.isEmpty {
-            envelope["body"] = bodyExtra
-        }
-        if let metadata = request.options?.metadata, !metadata.isEmpty {
-            envelope["metadata"] = metadata
-        }
-        return try JSONSerialization.data(withJSONObject: envelope)
+        let body = request.options?.body
+        let metadata = request.options?.metadata
+        let envelope = ChatRequestEnvelope(
+            id: request.id,
+            messages: request.messages.map { makeEncodableMessage($0) },
+            body: body?.isEmpty == false ? body : nil,
+            metadata: metadata?.isEmpty == false ? metadata : nil
+        )
+        return try JSONEncoder().encode(envelope)
     }
 
-    private func encodeMessage(_ message: UIMessage) -> [String: Any] {
-        var result: [String: Any] = ["role": message.role.rawValue]
-        let parts = message.parts.compactMap { encodePart($0) }
+    private func makeEncodableMessage(_ message: UIMessage) -> EncodableMessage {
+        let parts = message.parts.compactMap { makeEncodablePart($0) }
         if parts.isEmpty {
-            result["content"] = message.primaryText
-        } else {
-            result["parts"] = parts
+            return EncodableMessage(role: message.role.rawValue, content: message.primaryText, parts: nil)
         }
-        return result
+        return EncodableMessage(role: message.role.rawValue, content: nil, parts: parts)
     }
 
-    private func encodePart(_ part: UIMessagePart) -> [String: Any]? {
+    private func makeEncodablePart(_ part: UIMessagePart) -> EncodableMessagePart? {
         switch part {
         case .text(let p):
-            return ["type": "text", "text": p.text]
+            return .text(p.text)
         case .file(let p):
-            return encodeFilePart(p, type: "file")
+            return .file(makeEncodableFilePart(p), type: "file")
         case .image(let p):
-            return encodeFilePart(p, type: "image")
+            return .file(makeEncodableFilePart(p), type: "image")
         default:
             return nil
         }
     }
 
-    private func encodeFilePart(_ p: FilePart, type: String) -> [String: Any] {
-        var d: [String: Any] = ["type": type, "mediaType": p.mediaType]
-        if let name = p.name { d["name"] = name }
-        // Priority: fileId > data > url
-        if let fileId = p.fileId, !fileId.isEmpty {
-            d["fileId"] = fileId
-        } else if let data = p.data, !data.isEmpty {
-            d["data"] = data.base64EncodedString()
-        } else if !p.url.isEmpty {
-            d["url"] = p.url
-        }
-        return d
+    private func makeEncodableFilePart(_ p: FilePart) -> EncodableFilePart {
+        EncodableFilePart(
+            mediaType: p.mediaType,
+            name: p.name,
+            url: p.url,
+            data: p.data,
+            fileId: p.fileId
+        )
     }
 }
 

@@ -65,4 +65,18 @@ public enum UIMessageChunk: Sendable {
 
     /// A file attachment from a `file` chunk.
     case file(url: String, mediaType: String)
+
+    // MARK: - Tool error/approval chunk types (v6 alignment)
+
+    /// Tool input was rejected due to an error before execution.
+    case toolInputError(toolCallId: String, toolName: String, input: JSONValue, errorText: String)
+
+    /// Tool execution completed with an error.
+    case toolOutputError(toolCallId: String, errorText: String)
+
+    /// Tool execution was denied (user or policy rejected it).
+    case toolOutputDenied(toolCallId: String)
+
+    /// Server is requesting approval before executing a tool.
+    case toolApprovalRequest(approvalId: String, toolCallId: String, toolName: String, input: JSONValue)
 }

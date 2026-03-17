@@ -102,6 +102,26 @@ public struct UIMessageChunkDecoder: Sendable {
         case "tool-output-available":
             let output = try decodeJSONValueField("output", from: raw)
             return .toolOutputAvailable(toolCallId: tcId, output: output)
+        case "tool-input-error":
+            let input = try decodeJSONValueField("input", from: raw)
+            return .toolInputError(
+                toolCallId: tcId,
+                toolName: raw["toolName"] as? String ?? "",
+                input: input,
+                errorText: raw["errorText"] as? String ?? ""
+            )
+        case "tool-output-error":
+            return .toolOutputError(toolCallId: tcId, errorText: raw["errorText"] as? String ?? "")
+        case "tool-output-denied":
+            return .toolOutputDenied(toolCallId: tcId)
+        case "tool-approval-request":
+            let input = try decodeJSONValueField("input", from: raw)
+            return .toolApprovalRequest(
+                approvalId: raw["approvalId"] as? String ?? "",
+                toolCallId: tcId,
+                toolName: raw["toolName"] as? String ?? "",
+                input: input
+            )
         default:
             return nil
         }

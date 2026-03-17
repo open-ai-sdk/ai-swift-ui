@@ -51,7 +51,8 @@ public struct UIMessageStreamReducer: Sendable {
             applyTextChunk(chunk)
         case .reasoningStart, .reasoningDelta, .reasoningEnd:
             applyReasoningChunk(chunk)
-        case .toolInputStart, .toolInputAvailable, .toolOutputAvailable:
+        case .toolInputStart, .toolInputAvailable, .toolOutputAvailable,
+             .toolInputError, .toolOutputError, .toolOutputDenied, .toolApprovalRequest:
             applyToolChunk(chunk)
         case .source(let id, let url, let title):
             message.parts.append(.sourceURL(SourceURLPart(id: id, url: url, title: title)))
@@ -143,6 +144,43 @@ public struct UIMessageStreamReducer: Sendable {
             p.state = .outputAvailable
             p.output = output
             message.parts[idx] = .toolInvocation(p)
+        case .toolInputError(let tcId, let toolName, let input, let errorText):
+            if let idx = toolPartIndices[tcId],
+               case .toolInvocation(var p) = message.parts[idx] {
+                p.state = .outputError
+                p.errorText = errorText
+                message.parts[idx] = .toolInvocation(p)
+            } else {
+                toolPartIndices[tcId] = message.parts.count
+                message.parts.append(.toolInvocation(ToolInvocationPart(
+                    toolCallId: tcId, toolName: toolName, state: .outputError,
+                    input: input, errorText: errorText
+                )))
+            }
+        case .toolOutputError(let tcId, let errorText):
+            guard let idx = toolPartIndices[tcId],
+                  case .toolInvocation(var p) = message.parts[idx] else { return }
+            p.state = .outputError
+            p.errorText = errorText
+            message.parts[idx] = .toolInvocation(p)
+        case .toolOutputDenied(let tcId):
+            guard let idx = toolPartIndices[tcId],
+                  case .toolInvocation(var p) = message.parts[idx] else { return }
+            p.state = .outputDenied
+            message.parts[idx] = .toolInvocation(p)
+        case .toolApprovalRequest(let approvalId, let tcId, let toolName, let input):
+            if let idx = toolPartIndices[tcId],
+               case .toolInvocation(var p) = message.parts[idx] {
+                p.state = .approvalRequested
+                p.approvalId = approvalId
+                message.parts[idx] = .toolInvocation(p)
+            } else {
+                toolPartIndices[tcId] = message.parts.count
+                message.parts.append(.toolInvocation(ToolInvocationPart(
+                    toolCallId: tcId, toolName: toolName, state: .approvalRequested,
+                    input: input, approvalId: approvalId
+                )))
+            }
         default: break
         }
     }

@@ -52,15 +52,25 @@ public struct UIMessageChunkDecoder: Sendable {
         if type.hasPrefix("data-") {
             return try parseDataChunk(type: type, raw: raw)
         }
-        throw ChunkDecodingError.unknownChunkType(type)
+        // Unknown chunk types are silently skipped to keep the stream alive.
+        // The backend may emit new types that this SDK version doesn't handle yet.
+        return .data(name: "unknown-\(type)", payload: .null, isTransient: true, dataId: nil)
     }
 
     private func parseLifecycleChunk(type: String, raw: [String: Any]) -> UIMessageChunk? {
         switch type {
-        case "start": return .start(messageId: raw["messageId"] as? String ?? "")
+        case "start":
+            return .start(
+                messageId: raw["messageId"] as? String ?? "",
+                metadata: decodeMetadata(raw["messageMetadata"])
+            )
         case "start-step": return .startStep
         case "finish-step": return .finishStep
-        case "finish": return .finish(finishReason: raw["finishReason"] as? String)
+        case "finish":
+            return .finish(
+                finishReason: raw["finishReason"] as? String,
+                metadata: decodeMetadata(raw["messageMetadata"])
+            )
         case "error": return .error(text: raw["errorText"] as? String ?? "unknown error")
         default: return nil
         }
@@ -142,7 +152,7 @@ public struct UIMessageChunkDecoder: Sendable {
             return .sourceURL(
                 sourceId: raw["sourceId"] as? String ?? "",
                 url: raw["url"] as? String ?? "",
-                title: raw["title"] as? String ?? ""
+                title: raw["title"] as? String
             )
         case "source-document":
             return .sourceDocument(
@@ -165,6 +175,20 @@ public struct UIMessageChunkDecoder: Sendable {
         guard let fieldValue = raw[key] else { return .null }
         let fieldData = try JSONSerialization.data(withJSONObject: fieldValue)
         return try JSONDecoder().decode(JSONValue.self, from: fieldData)
+    }
+
+    private func decodeMetadata(_ rawValue: Any?) -> [String: JSONValue]? {
+        guard let metaRaw = rawValue as? [String: Any] else { return nil }
+        var metadata: [String: JSONValue] = [:]
+        for (key, value) in metaRaw {
+            guard JSONSerialization.isValidJSONObject(["v": value]),
+                  let wrapped = try? JSONSerialization.data(withJSONObject: ["v": value]),
+                  let decoded = try? JSONDecoder().decode([String: JSONValue].self, from: wrapped)["v"] else {
+                continue
+            }
+            metadata[key] = decoded
+        }
+        return metadata
     }
 }
 

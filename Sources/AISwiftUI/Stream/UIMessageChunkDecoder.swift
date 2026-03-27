@@ -186,6 +186,12 @@ public struct UIMessageChunkDecoder: Sendable {
                 url: raw["url"] as? String ?? "",
                 mediaType: raw["mediaType"] as? String ?? ""
             )
+        case "image":
+            return .image(
+                url: raw["url"] as? String ?? "",
+                mediaType: raw["mediaType"] as? String ?? "",
+                thoughtSignature: raw["thoughtSignature"] as? String
+            )
         default:
             return nil
         }

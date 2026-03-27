@@ -61,6 +61,38 @@ public extension UIMessage {
         }
     }
 
+    /// All image parts in order.
+    var images: [FilePart] {
+        parts.compactMap {
+            if case .image(let p) = $0 { return p }
+            return nil
+        }
+    }
+
+    /// Whether this message contains any image parts.
+    var hasImages: Bool {
+        parts.contains {
+            if case .image = $0 { return true }
+            return false
+        }
+    }
+
+    /// All file and image parts combined, in order.
+    var allFiles: [FilePart] {
+        parts.compactMap {
+            switch $0 {
+            case .file(let p): return p
+            case .image(let p): return p
+            default: return nil
+            }
+        }
+    }
+
+    /// The first image part, if any.
+    var firstImage: FilePart? {
+        images.first
+    }
+
     /// Document references decoded from `data-document-references` chunks.
     var documentReferences: [SourceDocumentPart] {
         parts.compactMap {

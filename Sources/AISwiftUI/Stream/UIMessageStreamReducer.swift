@@ -72,7 +72,16 @@ public struct UIMessageStreamReducer: Sendable {
                 id: sourceId, title: title, mediaType: mediaType, url: nil, content: nil, filename: filename
             )))
         case .file(let url, let mediaType):
-            message.parts.append(.file(FilePart(url: url, mediaType: mediaType)))
+            let fp = FilePart(url: url, mediaType: mediaType)
+            if mediaType.hasPrefix("image/") {
+                message.parts.append(.image(fp))
+            } else {
+                message.parts.append(.file(fp))
+            }
+        case .image(let url, let mediaType, let thoughtSignature):
+            var fp = FilePart(url: url, mediaType: mediaType)
+            fp.thoughtSignature = thoughtSignature
+            message.parts.append(.image(fp))
         }
     }
 

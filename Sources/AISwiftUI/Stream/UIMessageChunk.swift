@@ -66,6 +66,9 @@ public enum UIMessageChunk: Sendable {
     /// A file attachment from a `file` chunk.
     case file(url: String, mediaType: String)
 
+    /// An image attachment from an `image` chunk (Gemini image generation).
+    case image(url: String, mediaType: String, thoughtSignature: String? = nil)
+
     // MARK: - Tool error/approval chunk types (v6 alignment)
 
     /// Tool input was rejected due to an error before execution.

@@ -13,6 +13,8 @@ public struct FilePart: Codable, Sendable, Equatable {
     public var fileId: String?
     /// Inline binary content. Encoded as base64 in JSON.
     public var data: Data?
+    /// Gemini 3 thought signature for multi-turn image editing.
+    public var thoughtSignature: String?
 
     /// URL mode initializer (backwards compatible).
     public init(url: String, mediaType: String, name: String? = nil) {
@@ -33,5 +35,23 @@ public struct FilePart: Codable, Sendable, Equatable {
         var fp = FilePart(url: "", mediaType: mediaType, name: name)
         fp.data = data
         return fp
+    }
+}
+
+// MARK: - Image convenience
+
+public extension FilePart {
+    /// Whether this file part represents an image (based on media type).
+    var isImage: Bool {
+        mediaType.hasPrefix("image/")
+    }
+
+    /// Extracts image binary data from inline `data` field or from a `data:` URL.
+    var imageData: Data? {
+        if let data { return data }
+        guard url.hasPrefix("data:"),
+              let base64Range = url.range(of: ";base64,") else { return nil }
+        let base64String = String(url[base64Range.upperBound...])
+        return Data(base64Encoded: base64String)
     }
 }

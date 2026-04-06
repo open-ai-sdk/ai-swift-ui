@@ -94,4 +94,24 @@ public extension JSONValue {
         if case .int(let i) = self { return i }
         return nil
     }
+
+    var doubleValue: Double? {
+        if case .double(let d) = self { return d }
+        if case .int(let i) = self { return Double(i) }
+        return nil
+    }
+
+    var arrayValue: [JSONValue]? {
+        if case .array(let a) = self { return a }
+        return nil
+    }
+
+    var objectValue: [String: JSONValue]? {
+        if case .object(let o) = self { return o }
+        return nil
+    }
+
+    subscript(key: String) -> JSONValue? {
+        objectValue?[key]
+    }
 }

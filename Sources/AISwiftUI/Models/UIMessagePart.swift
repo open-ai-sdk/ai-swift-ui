@@ -8,6 +8,8 @@ public enum UIMessagePart: Sendable, Equatable {
     case file(FilePart)
     case image(FilePart)
     case data(DataPart)
+    /// A live json-render UI spec, built incrementally from SpecStream patches.
+    case uiSpec(UIRenderSpecPart)
 }
 
 // MARK: - Codable
@@ -22,6 +24,7 @@ extension UIMessagePart: Codable {
         case file
         case image
         case data
+        case uiSpec = "ui-spec"
     }
 
     private enum CodingKeys: String, CodingKey {
@@ -48,6 +51,8 @@ extension UIMessagePart: Codable {
             self = .image(try FilePart(from: decoder))
         case .data:
             self = .data(try DataPart(from: decoder))
+        case .uiSpec:
+            self = .uiSpec(try UIRenderSpecPart(from: decoder))
         }
     }
 
@@ -84,6 +89,10 @@ extension UIMessagePart: Codable {
         case .data(let p):
             var container = encoder.container(keyedBy: CodingKeys.self)
             try container.encode(PartType.data, forKey: .type)
+            try p.encode(to: encoder)
+        case .uiSpec(let p):
+            var container = encoder.container(keyedBy: CodingKeys.self)
+            try container.encode(PartType.uiSpec, forKey: .type)
             try p.encode(to: encoder)
         }
     }

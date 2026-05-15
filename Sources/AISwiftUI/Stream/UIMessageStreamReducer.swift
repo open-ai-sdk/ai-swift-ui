@@ -29,6 +29,10 @@ public struct UIMessageStreamReducer: Sendable {
     // Tracks tool invocation part indices by toolCallId
     private var toolPartIndices: [String: Int] = [:]
 
+    // Tracks the accumulated json-render UI spec and its part index
+    private var uiSpecValue: JSONValue = .object([:])
+    private var uiSpecPartIndex: Int?
+
     public init(messageId: String) {
         self.message = UIMessage(id: messageId, role: .assistant, parts: [])
     }
@@ -92,6 +96,8 @@ public struct UIMessageStreamReducer: Sendable {
         textBlockIndices = [:]
         reasoningBlockIndices = [:]
         toolPartIndices = [:]
+        uiSpecValue = .object([:])
+        uiSpecPartIndex = nil
     }
 
     private mutating func applyTextChunk(_ chunk: UIMessageChunk) {
@@ -194,10 +200,15 @@ public struct UIMessageStreamReducer: Sendable {
         }
     }
 
-    /// Handles `data-*` chunks. `data-document-references` is promoted to
-    /// `.sourceDocument` parts; all others land as generic `DataPart`.
+    /// Handles `data-*` chunks. `data-ui-spec` patches are applied to the live
+    /// json-render spec; `data-document-references` is promoted to `.sourceDocument`
+    /// parts; all others land as generic `DataPart`.
     private mutating func applyDataChunk(name: String, payload: JSONValue, isTransient: Bool = false, dataId: String? = nil) {
         if isTransient {
+            return
+        }
+        if name == "ui-spec" {
+            applyUISpecChunk(payload: payload)
             return
         }
         if name == "document-references", case .array(let items) = payload {
@@ -218,6 +229,29 @@ public struct UIMessageStreamReducer: Sendable {
             } else {
                 message.parts.append(.data(next))
             }
+        }
+    }
+
+    /// Applies a json-render SpecStream chunk to the accumulated UI spec.
+    ///
+    /// The payload can be either:
+    /// - A **JSON Patch operation** (`{"op":…, "path":…, "value":…}`) — applied incrementally.
+    /// - A **full spec** (`{"root":…, "elements":…}`) — replaces the current spec entirely.
+    private mutating func applyUISpecChunk(payload: JSONValue) {
+        if case .object(let dict) = payload, case .string(_) = dict["op"] {
+            // JSON Patch operation — apply to current spec
+            try? JSONPatchApplicator.apply(patch: payload, to: &uiSpecValue)
+        } else {
+            // Full spec delivery — replace entirely
+            uiSpecValue = payload
+        }
+
+        let part = UIRenderSpecPart(rawValue: uiSpecValue)
+        if let idx = uiSpecPartIndex {
+            message.parts[idx] = .uiSpec(part)
+        } else {
+            uiSpecPartIndex = message.parts.count
+            message.parts.append(.uiSpec(part))
         }
     }
 

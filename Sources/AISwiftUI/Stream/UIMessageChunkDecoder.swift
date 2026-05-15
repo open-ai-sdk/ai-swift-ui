@@ -149,8 +149,7 @@ public struct UIMessageChunkDecoder: Sendable {
         guard let dataField = raw["data"] else {
             return .data(name: name, payload: .null, isTransient: isTransient, dataId: dataId)
         }
-        let fieldData = try JSONSerialization.data(withJSONObject: dataField)
-        let payload = try JSONDecoder().decode(JSONValue.self, from: fieldData)
+        let payload = try decodeJSONValue(from: dataField)
         return .data(name: name, payload: payload, isTransient: isTransient, dataId: dataId)
     }
 
@@ -199,8 +198,13 @@ public struct UIMessageChunkDecoder: Sendable {
 
     private func decodeJSONValueField(_ key: String, from raw: [String: Any]) throws -> JSONValue {
         guard let fieldValue = raw[key] else { return .null }
-        let fieldData = try JSONSerialization.data(withJSONObject: fieldValue)
-        return try JSONDecoder().decode(JSONValue.self, from: fieldData)
+        return try decodeJSONValue(from: fieldValue)
+    }
+
+    private func decodeJSONValue(from value: Any) throws -> JSONValue {
+        let wrapped = try JSONSerialization.data(withJSONObject: ["value": value])
+        let decoded = try JSONDecoder().decode([String: JSONValue].self, from: wrapped)
+        return decoded["value"] ?? .null
     }
 
     private func decodeMetadata(_ rawValue: Any?) -> [String: JSONValue]? {

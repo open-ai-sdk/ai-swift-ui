@@ -166,6 +166,13 @@ struct ModelCodableTests {
         #expect(decoded == value)
     }
 
+    @Test func jsonValueInitAnySupportsScalarTopLevelValues() throws {
+        #expect(try JSONValue(any: "plain") == .string("plain"))
+        #expect(try JSONValue(any: 42) == .int(42))
+        #expect(try JSONValue(any: true) == .bool(true))
+        #expect(try JSONValue(any: nil) == .null)
+    }
+
     // MARK: - NewUIMessage
 
     @Test func newUIMessageMakesMessage() {

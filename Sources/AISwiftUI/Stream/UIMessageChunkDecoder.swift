@@ -202,9 +202,7 @@ public struct UIMessageChunkDecoder: Sendable {
     }
 
     private func decodeJSONValue(from value: Any) throws -> JSONValue {
-        let wrapped = try JSONSerialization.data(withJSONObject: ["value": value])
-        let decoded = try JSONDecoder().decode([String: JSONValue].self, from: wrapped)
-        return decoded["value"] ?? .null
+        try JSONValue(any: value)
     }
 
     private func decodeMetadata(_ rawValue: Any?) -> [String: JSONValue]? {

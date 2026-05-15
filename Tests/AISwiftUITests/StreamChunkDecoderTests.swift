@@ -74,6 +74,16 @@ struct StreamChunkDecoderTests {
         #expect(tcId == "tc1")
     }
 
+    @Test func decodesToolOutputAvailableWithStringOutput() throws {
+        let json = #"data: {"type":"tool-output-available","toolCallId":"tc1","output":"plain result"}"#
+        let chunk = try decoder.decode(json)
+        guard case .toolOutputAvailable(let tcId, let output) = chunk else {
+            Issue.record("Expected toolOutputAvailable"); return
+        }
+        #expect(tcId == "tc1")
+        #expect(output == .string("plain result"))
+    }
+
     @Test func decodesSourceChunk() throws {
         let json = #"data: {"type":"source","id":"src-1","url":"https://example.com","title":"Example"}"#
         let chunk = try decoder.decode(json)
@@ -101,6 +111,14 @@ struct StreamChunkDecoderTests {
         } else {
             Issue.record("Unexpected data payload")
         }
+    }
+
+    @Test func decodesScalarDataChunk() throws {
+        let json = #"data: {"type":"data-status","data":"ready"}"#
+        let chunk = try decoder.decode(json)
+        guard case .data(let name, let payload, _, _) = chunk else { Issue.record("Expected data"); return }
+        #expect(name == "status")
+        #expect(payload == .string("ready"))
     }
 
     @Test func decodesDoneReturnsNil() throws {

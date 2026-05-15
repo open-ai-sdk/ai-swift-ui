@@ -63,8 +63,9 @@ public extension JSONValue {
             self = .null
             return
         }
-        let data = try JSONSerialization.data(withJSONObject: value)
-        self = try JSONDecoder().decode(JSONValue.self, from: data)
+        let data = try JSONSerialization.data(withJSONObject: ["value": value])
+        let decoded = try JSONDecoder().decode([String: JSONValue].self, from: data)
+        self = decoded["value"] ?? .null
     }
 
     /// Returns the underlying value as a Swift Any for interoperability.
